@@ -15,31 +15,32 @@ export function drawCard(canvas: HTMLCanvasElement, card: CardInput): void {
   ctx.clearRect(0, 0, w, h)
 
   const sky = ctx.createLinearGradient(0, 0, 0, h)
-  sky.addColorStop(0, '#d7eef8')
-  sky.addColorStop(0.42, '#d7eef8')
-  sky.addColorStop(0.42, '#d7ecc4')
-  sky.addColorStop(1, '#b7d89a')
+  sky.addColorStop(0, '#d9f1ff')
+  sky.addColorStop(0.46, '#eef8f2')
+  sky.addColorStop(1, '#c9e7b4')
   ctx.fillStyle = sky
   ctx.fillRect(0, 0, w, h)
 
-  roundRect(ctx, 70, 80, w - 140, h - 160, 36, '#fffaf3')
-  ctx.strokeStyle = '#e4d3bf'
-  ctx.lineWidth = 4
-  ctx.stroke()
+  ctx.save()
+  ctx.shadowColor = 'rgba(36, 28, 22, 0.14)'
+  ctx.shadowBlur = 48
+  ctx.shadowOffsetY = 22
+  roundRect(ctx, 70, 80, w - 140, h - 160, 48, '#fffdf9')
+  ctx.restore()
 
-  ctx.fillStyle = '#8a5a32'
-  ctx.font = '600 34px Georgia, serif'
+  ctx.fillStyle = '#8d7564'
+  ctx.font = '600 30px ui-sans-serif, system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.fillText('ПРОТОКОЛ', w / 2, 180)
-  ctx.fillStyle = '#3b2314'
-  ctx.font = '44px Georgia, serif'
-  ctx.fillText(card.label, w / 2, 250)
+  ctx.fillStyle = '#241c16'
+  ctx.font = '600 46px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText(card.label, w / 2, 246)
 
   drawBull(ctx, w / 2, 470, card.pleased)
   drawWave(ctx, 160, 760, w - 320, 220, card.waveform)
 
-  ctx.fillStyle = '#3b2314'
-  ctx.font = '54px Georgia, serif'
+  ctx.fillStyle = '#241c16'
+  ctx.font = '52px Georgia, serif'
   ctx.textAlign = 'center'
   const lines = wrap(ctx, `«${card.text}»`, w - 220)
   let y = 1120
@@ -51,19 +52,19 @@ export function drawCard(canvas: HTMLCanvasElement, card: CardInput): void {
   ctx.save()
   ctx.translate(w - 250, h - 420)
   ctx.rotate(-0.18)
-  ctx.strokeStyle = card.pleased ? '#2f7d4a' : '#c6453c'
-  ctx.lineWidth = 8
+  ctx.strokeStyle = card.pleased ? '#12924f' : '#ef5b4c'
+  ctx.lineWidth = 7
   ctx.beginPath()
   ctx.arc(0, 0, 110, 0, Math.PI * 2)
   ctx.stroke()
   ctx.fillStyle = ctx.strokeStyle
-  ctx.font = '700 36px Georgia, serif'
+  ctx.font = '700 34px ui-sans-serif, system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.fillText(card.stamp.toUpperCase(), 0, 12)
   ctx.restore()
 
-  ctx.fillStyle = '#8a5a32'
-  ctx.font = '32px ui-monospace, monospace'
+  ctx.fillStyle = '#8d7564'
+  ctx.font = '30px ui-monospace, monospace'
   ctx.textAlign = 'center'
   ctx.fillText(card.share, w / 2, h - 180)
 }
@@ -116,8 +117,10 @@ function drawWave(
   h: number,
   wave: number[],
 ): void {
-  ctx.strokeStyle = '#c6453c'
-  ctx.lineWidth = 6
+  ctx.strokeStyle = '#ef5b4c'
+  ctx.lineWidth = 7
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   ctx.beginPath()
   const mid = y + h / 2
   wave.forEach((value, i) => {
