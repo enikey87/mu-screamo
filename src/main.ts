@@ -56,9 +56,14 @@ const today = dailyBull(new Date())
 dateLabel.textContent = `${today.label} · дневной бык`
 
 go.addEventListener('pointerdown', (event) => {
+  if (audio?.state === 'suspended') void audio.resume()
   if (!running || mic) return
   holding = true
-  go.setPointerCapture(event.pointerId)
+  try {
+    go.setPointerCapture(event.pointerId)
+  } catch {
+    // iOS drops capture when the permission sheet stole the pointer.
+  }
 })
 go.addEventListener('pointerup', () => {
   holding = false
@@ -72,13 +77,19 @@ go.addEventListener('click', () => {
 })
 
 save.addEventListener('click', () => {
+  if (!bull) return
+  const name = `bynich-${bull.dateKey}.png`
   canvas.toBlob((blob) => {
-    if (!blob || !bull) return
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `bynich-${bull.dateKey}.png`
-    link.click()
-    URL.revokeObjectURL(link.href)
+    if (!blob) return
+    const file = new File([blob], name, { type: 'image/png' })
+    if (!navigator.canShare?.({ files: [file] })) {
+      downloadCard(blob, name)
+      return
+    }
+    void navigator.share({ files: [file], title: 'Протокол' }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      downloadCard(blob, name)
+    })
   })
 })
 
@@ -110,6 +121,7 @@ async function start(): Promise<void> {
   copy.textContent = 'Скопировать строку'
   go.disabled = true
   const ctx = context()
+  unlock(ctx)
   const resumed = ctx.resume().catch(() => undefined)
   const opened = micBlocked
     ? Promise.resolve(null)
@@ -119,6 +131,7 @@ async function start(): Promise<void> {
       })
   await resumed
   mic = await opened
+  if (ctx.state !== 'running') await ctx.resume().catch(() => undefined)
   bull = dailyBull(new Date())
   dateLabel.textContent = `${bull.label} · дневной бык`
   round = createRound(bull.segments)
@@ -203,7 +216,7 @@ function finish(view: View, voice: DailyBull): void {
     waveform: view.waveform,
     pleased: view.pleased,
   })
-  if (!dialog.open) dialog.showModal()
+  openDialog()
   go.hidden = false
   go.disabled = false
   go.textContent = 'В бой'
@@ -211,6 +224,7 @@ function finish(view: View, voice: DailyBull): void {
 
 function showPreview(): void {
   const voice = dailyBull(new Date())
+  bull = voice
   shareText = formatShare(voice.label, 'опись', 4200)
   drawCard(canvas, {
     label: voice.label,
@@ -220,7 +234,33 @@ function showPreview(): void {
     waveform: Array.from({ length: 64 }, (_, i) => 0.2 + 0.6 * Math.abs(Math.sin(i / 5))),
     pleased: true,
   })
-  dialog.showModal()
+  openDialog()
+}
+
+function openDialog(): void {
+  if (dialog.open) return
+  try {
+    dialog.showModal()
+  } catch {
+    dialog.setAttribute('open', '')
+  }
+}
+
+function downloadCard(blob: Blob, name: string): void {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
+function unlock(ctx: AudioContext): void {
+  const buffer = ctx.createBuffer(1, 1, ctx.sampleRate)
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.connect(ctx.destination)
+  source.start()
 }
 
 function context(): AudioContext {
