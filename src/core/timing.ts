@@ -7,6 +7,13 @@ export const ROUND_MS = HUSH_MS + INVITE_MS + LISTEN_MS
 /** Поверх голоса быка очко меньше: попасть нужно в его вдох. */
 export const VOICE_WEIGHT = 0.35
 
+/** Нокаут позже четырёх секунд «мууу» во вдох: канат и фраза заканчиваются вместе. */
+export const KO_PULL_MS = 4_400
+export const INHALE_PLAYER = 1.35
+export const INHALE_BULL = 0.12
+export const VOICE_PLAYER = 0.72
+export const VOICE_BULL = 1
+
 /** Запас над порогом, пока динамик сам мычит: тихий засвет микрофона не становится криком. */
 export const VOICE_GATE_DB = 8
 

@@ -2,7 +2,7 @@ import { analyzeFrame } from './core/analyze'
 import { dailyBull, type DailyBull } from './core/daily'
 import { createRound, push, type Round, type View } from './core/round'
 import { formatShare } from './core/share'
-import { HUSH_MS, INVITE_MS } from './core/timing'
+import { HUSH_MS, INVITE_MS, ROUND_MS } from './core/timing'
 import { openMic, type Mic } from './audio/mic'
 import { playBull } from './audio/voice'
 import { drawCard } from './ui/card'
@@ -14,11 +14,13 @@ function required<T extends Element>(selector: string): T {
   return node
 }
 
+const app = required<HTMLElement>('#app')
 const dateLabel = required<HTMLElement>('#date-label')
+const callout = required<HTMLElement>('#callout')
+const clock = required<HTMLElement>('#clock')
 const stageBull = required<HTMLElement>('#stage-bull')
 const bullSvg = required<SVGElement>('#bull')
 const line = required<HTMLElement>('#line')
-const meter = required<HTMLElement>('#meter')
 const go = required<HTMLButtonElement>('#go')
 const hint = required<HTMLElement>('#hint')
 const dialog = required<HTMLDialogElement>('#card-dialog')
@@ -31,6 +33,7 @@ let audio: AudioContext | null = null
 let mic: Mic | null = null
 let stopVoice: (() => void) | null = null
 let frame = 0
+let bout = 0
 let running = false
 let holding = false
 let micBlocked = false
@@ -90,6 +93,7 @@ if (params.has('card')) showPreview()
 
 async function start(): Promise<void> {
   if (running) return
+  bout += 1
   release()
   running = true
   holding = false
@@ -110,8 +114,9 @@ async function start(): Promise<void> {
   round = createRound(bull.segments)
   origin = ctx.currentTime
   stopVoice = playBull(ctx, bull, origin + (HUSH_MS + INVITE_MS) / 1000)
-  go.disabled = mic !== null
-  go.textContent = mic ? 'Слушаю…' : 'Держи'
+  go.hidden = mic !== null
+  go.disabled = false
+  go.textContent = 'Держи'
   if (!mic && go.matches(':active')) holding = true
   frame = requestAnimationFrame(loop)
 }
@@ -134,20 +139,34 @@ function loop(): void {
   const view = push(current, { t, db, moo, f0, hold: holding && !mic })
   render(view)
   if (view.phase === 'done') {
-    finish(view, voice)
+    const snapshot = view
+    const fought = voice
+    const id = bout
+    release()
+    window.setTimeout(() => {
+      if (bout !== id) return
+      finish(snapshot, fought)
+    }, 900)
     return
   }
   frame = requestAnimationFrame(loop)
 }
 
 function render(view: View): void {
+  app.dataset.phase = view.phase
+  app.dataset.breath = view.breath
+  app.style.setProperty('--tug', view.tug.toFixed(3))
+  app.classList.toggle('is-yours', view.tug > 0.08)
+  app.classList.toggle('is-his', view.tug < -0.08)
+  app.classList.toggle('is-shake', view.phase === 'invite' && view.proximity > 0.45)
   stageBull.style.setProperty('--proximity', view.proximity.toFixed(3))
   stageBull.style.setProperty('--cheeks', view.cheeks.toFixed(3))
   bullSvg.classList.toggle('is-pleased', view.pleased)
   bullSvg.classList.toggle('is-puzzled', view.puzzled)
+  callout.textContent = view.shout
   line.textContent = view.line
-  meter.style.width = `${Math.round(view.meter * 100)}%`
   hint.textContent = view.hint
+  clock.style.transform = `scaleX(${Math.max(0, 1 - view.elapsed / ROUND_MS)})`
 }
 
 function finish(view: View, voice: DailyBull): void {
@@ -162,8 +181,9 @@ function finish(view: View, voice: DailyBull): void {
     pleased: view.pleased,
   })
   if (!dialog.open) dialog.showModal()
+  go.hidden = false
   go.disabled = false
-  go.textContent = 'Мычать'
+  go.textContent = 'В бой'
 }
 
 function showPreview(): void {

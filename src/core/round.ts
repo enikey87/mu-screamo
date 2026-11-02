@@ -1,6 +1,17 @@
 import { breathAt, segmentEndOffset, type Segment } from './daily'
 import { PHRASES, revealedLine, selectPhrase, type Score } from './phrases'
-import { HUSH_MS, INVITE_MS, ROUND_MS, VOICE_GATE_DB, VOICE_WEIGHT } from './timing'
+import {
+  HUSH_MS,
+  INHALE_BULL,
+  INHALE_PLAYER,
+  INVITE_MS,
+  KO_PULL_MS,
+  ROUND_MS,
+  VOICE_BULL,
+  VOICE_GATE_DB,
+  VOICE_PLAYER,
+  VOICE_WEIGHT,
+} from './timing'
 
 const LISTEN_START = HUSH_MS + INVITE_MS
 const LOUD_MARGIN_DB = 12
@@ -20,8 +31,12 @@ export interface Sample {
 export interface View {
   phase: 'hush' | 'invite' | 'listen' | 'done'
   breath: 'hush' | 'bait' | 'voice' | 'inhale'
+  shout: string
   hint: string
   line: string
+  /** −1 бык забрал канат, +1 забрал игрок */
+  tug: number
+  elapsed: number
   phraseId: string
   stamp: string
   text: string
@@ -50,6 +65,7 @@ export interface Round {
   wave: number[]
   proximity: number
   lastDb: number
+  pull: number
   finished: boolean
 }
 
@@ -67,6 +83,7 @@ export function createRound(segments: Segment[]): Round {
     wave: [],
     proximity: 0.12,
     lastDb: -90,
+    pull: 0,
     finished: false,
   }
 }
@@ -118,8 +135,16 @@ export function push(round: Round, sample: Sample): View {
     } else if (kind === 'inhale' && loud) {
       round.screamMs += slice
     }
+    const player = counts ? (kind === 'inhale' ? INHALE_PLAYER : VOICE_PLAYER) : 0
+    const bull = kind === 'inhale' ? INHALE_BULL : VOICE_BULL
+    round.pull += (player - bull) * slice
     round.wave.push(meterOf(sample.db, round.threshold))
     cursor = sliceEnd
+    if (round.pull >= KO_PULL_MS || round.pull <= -KO_PULL_MS) {
+      round.pull = clamp(round.pull, -KO_PULL_MS, KO_PULL_MS)
+      round.finished = true
+      break
+    }
   }
 
   round.lastT = to
@@ -128,15 +153,17 @@ export function push(round: Round, sample: Sample): View {
 }
 
 function viewOf(round: Round, t: number): View {
-  const phase = phaseOf(t)
+  const phase = round.finished ? 'done' : phaseOf(t)
   const score = scoreOf(round)
   const phrase = selectPhrase(score)
   const breath = breathOf(round, phase, t)
   const done = phase === 'done'
   const index = Math.max(0, PHRASES.findIndex((item) => item.id === phrase.id))
+  const yours = round.pull > 80
   return {
     phase,
     breath,
+    shout: shoutOf(phase, breath, yours),
     hint: hintOf(phase, breath),
     line: phase === 'hush' || phase === 'invite' ? '' : revealedLine(score, done),
     phraseId: phrase.id,
@@ -144,8 +171,10 @@ function viewOf(round: Round, t: number): View {
     text: phrase.text,
     proximity: round.proximity,
     cheeks: cheeksOf(phase, breath, round.proximity, index),
-    pleased: done && index >= 6,
-    puzzled: done && index === 0,
+    pleased: done && yours,
+    puzzled: done && round.pull < -80,
+    tug: clamp(round.pull / KO_PULL_MS, -1, 1),
+    elapsed: Math.min(Math.max(t, 0), ROUND_MS),
     mooMs: round.mooMs,
     weightedMs: round.weightedMs,
     screamMs: round.screamMs,
@@ -178,10 +207,18 @@ function breathOf(round: Round, phase: View['phase'], t: number): View['breath']
   return 'inhale'
 }
 
+function shoutOf(phase: View['phase'], breath: View['breath'], yours: boolean): string {
+  if (phase === 'hush') return 'Тихо'
+  if (phase === 'invite') return 'Ори'
+  if (phase === 'listen' && breath === 'inhale') return 'Муу'
+  if (phase === 'listen') return 'Держись'
+  return yours ? 'Забрал' : 'Его'
+}
+
 function hintOf(phase: View['phase'], breath: View['breath']): string {
-  if (phase === 'hush') return 'Тихо. Комната запоминается.'
-  if (phase === 'invite') return 'Можно орать.'
-  if (phase === 'listen' && breath === 'inhale') return 'Вдох. Мычи.'
+  if (phase === 'hush') return 'Комната запоминается.'
+  if (phase === 'invite') return 'Канат от крика не едет.'
+  if (phase === 'listen' && breath === 'inhale') return 'Его вдох. Тяни.'
   if (phase === 'listen') return 'Он тянет своё.'
   return 'Протокол готов.'
 }
