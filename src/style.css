@@ -1,0 +1,197 @@
+:root {
+  color: #3b2314;
+  background: #d7eef8;
+  font-family: Georgia, "Iowan Old Style", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: linear-gradient(#d7eef8 0 42%, #d7ecc4 42% 100%);
+}
+
+.app {
+  width: min(440px, 100%);
+  margin: 0 auto;
+  padding: 1.2rem 1.1rem 2rem;
+}
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  color: #8a5a32;
+}
+
+h1 {
+  margin: 0.2rem 0 0.4rem;
+  font-size: 2.4rem;
+  font-weight: 700;
+}
+
+.lead,
+.hint,
+.privacy {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.lead {
+  font-size: 1.05rem;
+}
+
+.stage {
+  margin: 1rem 0 0.6rem;
+  display: grid;
+  place-items: center;
+  min-height: 280px;
+}
+
+.stage-bull {
+  width: min(320px, 86vw);
+  transform: scale(calc(0.84 + var(--proximity) * 0.22));
+  transition: transform 80ms linear;
+}
+
+.bull {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+#muzzle {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(calc(0.94 + var(--cheeks) * 0.14));
+}
+
+.eye-arc {
+  opacity: 0;
+}
+
+.bull.is-pleased #pupil-l,
+.bull.is-pleased #pupil-r {
+  opacity: 0;
+}
+
+.bull.is-pleased .eye-arc {
+  opacity: 1;
+}
+
+.bull.is-puzzled #brows {
+  transform: translateY(8px);
+}
+
+.paper {
+  min-height: 4.6rem;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  background: #fffaf3;
+  border-radius: 14px;
+  box-shadow: 0 8px 0 rgba(90, 50, 20, 0.06);
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
+
+.paper:empty::before {
+  content: "····";
+  color: #c9b39a;
+}
+
+.meter {
+  height: 8px;
+  margin: 0.8rem 0 0.9rem;
+  background: rgba(255, 250, 243, 0.7);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #c6453c;
+}
+
+.go {
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.95rem 1.2rem;
+  background: #c6453c;
+  color: white;
+  font: inherit;
+  font-size: 1.35rem;
+  touch-action: none;
+}
+
+.go:disabled {
+  opacity: 0.85;
+}
+
+.hint {
+  margin-top: 0.75rem;
+  min-height: 1.4em;
+}
+
+.privacy {
+  margin-top: 1.2rem;
+  font-family: system-ui, sans-serif;
+  font-size: 0.82rem;
+  color: #6d5138;
+}
+
+.card-dialog {
+  width: min(420px, calc(100vw - 1.5rem));
+  padding: 0.8rem;
+  border: 0;
+  border-radius: 18px;
+  background: #fffaf3;
+}
+
+.card-dialog::backdrop {
+  background: rgba(40, 24, 12, 0.55);
+}
+
+.card-dialog canvas {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.card-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.card-actions button,
+.card-actions .ghost {
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  font: inherit;
+  font-size: 1rem;
+}
+
+.card-actions button {
+  border: 0;
+  background: #c6453c;
+  color: white;
+}
+
+.card-actions .ghost {
+  background: transparent;
+  color: #3b2314;
+  border: 2px solid #e4d3bf;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-bull {
+    transition: none;
+  }
+}
