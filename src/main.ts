@@ -14,12 +14,22 @@ function required<T extends Element>(selector: string): T {
   return node
 }
 
+function mountBull(host: HTMLElement): SVGElement {
+  const tpl = required<HTMLTemplateElement>('#bull-tpl')
+  const svg = tpl.content.firstElementChild?.cloneNode(true)
+  if (!(svg instanceof SVGElement)) throw new Error('missing bull')
+  host.append(svg)
+  return svg
+}
+
 const app = required<HTMLElement>('#app')
 const dateLabel = required<HTMLElement>('#date-label')
 const callout = required<HTMLElement>('#callout')
 const clock = required<HTMLElement>('#clock')
-const stageBull = required<HTMLElement>('#stage-bull')
-const bullSvg = required<SVGElement>('#bull')
+const youFighter = required<HTMLElement>('#fighter-you')
+const bullFighter = required<HTMLElement>('#fighter-bull')
+const youSvg = mountBull(required<HTMLElement>('#you-body'))
+const bullSvg = mountBull(required<HTMLElement>('#bull-body'))
 const line = required<HTMLElement>('#line')
 const go = required<HTMLButtonElement>('#go')
 const hint = required<HTMLElement>('#hint')
@@ -158,12 +168,25 @@ function render(view: View): void {
   app.style.setProperty('--tug', view.tug.toFixed(3))
   app.classList.toggle('is-yours', view.tug > 0.08)
   app.classList.toggle('is-his', view.tug < -0.08)
-  app.classList.toggle('is-shake', view.phase === 'invite' && view.proximity > 0.45)
-  stageBull.style.setProperty('--proximity', view.proximity.toFixed(3))
-  stageBull.style.setProperty('--cheeks', view.cheeks.toFixed(3))
-  bullSvg.classList.toggle('is-pleased', view.pleased)
-  bullSvg.classList.toggle('is-puzzled', view.puzzled)
-  callout.textContent = view.shout
+  app.classList.toggle('is-ko', view.phase === 'done')
+  youFighter.classList.toggle('is-hot', view.youHot)
+  bullFighter.classList.toggle('is-hot', view.bullHot)
+  youFighter.classList.toggle('is-lose', view.phase === 'done' && view.tug < -0.08)
+  bullFighter.classList.toggle('is-lose', view.phase === 'done' && view.tug > 0.08)
+  youSvg.classList.toggle('is-fierce', view.youHot)
+  bullSvg.classList.toggle('is-fierce', view.bullHot)
+  youSvg.style.setProperty('--cheeks', view.youHot ? '1' : '0.25')
+  bullSvg.style.setProperty('--cheeks', view.bullHot ? '1' : '0.25')
+  youSvg.classList.toggle('is-pleased', view.phase === 'done' && view.tug > 0.08)
+  bullSvg.classList.toggle('is-pleased', view.phase === 'done' && view.tug < -0.08)
+  youSvg.classList.toggle('is-puzzled', view.phase === 'done' && view.tug < -0.08)
+  bullSvg.classList.toggle('is-puzzled', view.phase === 'done' && view.tug > 0.08)
+  if (callout.textContent !== view.shout) {
+    callout.textContent = view.shout
+    callout.classList.remove('is-pop')
+    void callout.offsetWidth
+    callout.classList.add('is-pop')
+  }
   line.textContent = view.line
   hint.textContent = view.hint
   clock.style.transform = `scaleX(${Math.max(0, 1 - view.elapsed / ROUND_MS)})`

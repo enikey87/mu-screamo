@@ -39,7 +39,7 @@ describe('push', () => {
     walk(round, 500, 2_300, { db: -8 })
     const invited = push(round, { ...room, t: 2_300, db: -8 })
     expect(invited.phase).toBe('invite')
-    expect(invited.shout).toBe('Ори')
+    expect(invited.shout).toBe('1')
     expect(invited.tug).toBe(0)
     expect(invited.line).toBe('')
     expect(invited.proximity).toBeGreaterThan(0.6)

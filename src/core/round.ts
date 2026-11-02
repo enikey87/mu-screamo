@@ -32,6 +32,8 @@ export interface View {
   phase: 'hush' | 'invite' | 'listen' | 'done'
   breath: 'hush' | 'bait' | 'voice' | 'inhale'
   shout: string
+  youHot: boolean
+  bullHot: boolean
   hint: string
   line: string
   /** −1 бык забрал канат, +1 забрал игрок */
@@ -66,6 +68,8 @@ export interface Round {
   proximity: number
   lastDb: number
   pull: number
+  youHot: boolean
+  bullHot: boolean
   finished: boolean
 }
 
@@ -84,6 +88,8 @@ export function createRound(segments: Segment[]): Round {
     proximity: 0.12,
     lastDb: -90,
     pull: 0,
+    youHot: false,
+    bullHot: false,
     finished: false,
   }
 }
@@ -96,6 +102,7 @@ export function push(round: Round, sample: Sample): View {
   if (to - from > MAX_STEP_MS) {
     round.lastT = to
     if (to >= ROUND_MS) round.finished = true
+    touchFaces(round, sample)
     return viewOf(round, to)
   }
 
@@ -149,6 +156,7 @@ export function push(round: Round, sample: Sample): View {
 
   round.lastT = to
   if (to >= ROUND_MS) round.finished = true
+  touchFaces(round, sample)
   return viewOf(round, to)
 }
 
@@ -163,7 +171,9 @@ function viewOf(round: Round, t: number): View {
   return {
     phase,
     breath,
-    shout: shoutOf(phase, breath, yours),
+    shout: shoutOf(phase, breath, t),
+    youHot: round.youHot,
+    bullHot: round.bullHot,
     hint: hintOf(phase, breath),
     line: phase === 'hush' || phase === 'invite' ? '' : revealedLine(score, done),
     phraseId: phrase.id,
@@ -207,20 +217,41 @@ function breathOf(round: Round, phase: View['phase'], t: number): View['breath']
   return 'inhale'
 }
 
-function shoutOf(phase: View['phase'], breath: View['breath'], yours: boolean): string {
-  if (phase === 'hush') return 'Тихо'
-  if (phase === 'invite') return 'Ори'
+function shoutOf(phase: View['phase'], breath: View['breath'], t: number): string {
+  if (phase === 'hush' || phase === 'invite') {
+    if (t < 800) return '3'
+    if (t < 1600) return '2'
+    return '1'
+  }
   if (phase === 'listen' && breath === 'inhale') return 'Муу'
-  if (phase === 'listen') return 'Держись'
-  return yours ? 'Забрал' : 'Его'
+  if (phase === 'listen') return 'Его'
+  return 'Ко'
 }
 
 function hintOf(phase: View['phase'], breath: View['breath']): string {
-  if (phase === 'hush') return 'Комната запоминается.'
-  if (phase === 'invite') return 'Канат от крика не едет.'
-  if (phase === 'listen' && breath === 'inhale') return 'Его вдох. Тяни.'
-  if (phase === 'listen') return 'Он тянет своё.'
+  if (phase === 'hush' || phase === 'invite') return 'Молчи до сигнала.'
+  if (phase === 'listen' && breath === 'inhale') return 'Его вдох. Мычи.'
+  if (phase === 'listen') return 'Он тянет. Шкала едет к нему.'
   return 'Протокол готов.'
+}
+
+function touchFaces(round: Round, sample: Sample): void {
+  if (round.finished) {
+    round.youHot = false
+    round.bullHot = false
+    return
+  }
+  const loud = sample.hold || sample.db >= round.threshold
+  if (sample.t < LISTEN_START) {
+    round.youHot = sample.t >= HUSH_MS && loud
+    round.bullHot = false
+    return
+  }
+  const kind = breathAt(round.segments, sample.t - LISTEN_START)
+  const gated = sample.db >= round.threshold + VOICE_GATE_DB
+  const counts = sample.hold || (kind === 'inhale' ? sample.moo && loud : sample.moo && gated)
+  round.youHot = counts
+  round.bullHot = kind === 'voice'
 }
 
 function cheeksOf(phase: View['phase'], breath: View['breath'], proximity: number, index: number): number {
