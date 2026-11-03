@@ -228,3 +228,30 @@ describe('championship air', () => {
     if (index >= 3) expect(play(false).tug).toBeLessThan(-0.08)
   })
 })
+
+describe('inhale animation timing', () => {
+  const segments: Segment[] = [
+    { kind: 'voice', ms: 1000 },
+    { kind: 'inhale', ms: 1200 },
+    { kind: 'voice', ms: 800 },
+    { kind: 'inhale', ms: 5000 },
+  ]
+
+  it.each([
+    [0, null], [2300, null], [2400, null], [3399, null],
+    [3400, 0], [4000, 0.5], [4599, 1199 / 1200],
+    [4600, null], [5399, null], [5400, 0], [7900, 0.5],
+    [10399, 4999 / 5000], [10400, null],
+  ])('reports inhale progress at %i ms without leaking into other phases', (t, expected) => {
+    const round = createRound(segments)
+    walk(round, 0, Math.floor(t / 100) * 100, {})
+    const view = push(round, { ...room, t })
+    if (expected === null) expect(view.inhale).toBeNull()
+    else expect(view.inhale).toBeCloseTo(expected, 6)
+  })
+
+  it('does not animate a nonexistent inhale in an empty schedule', () => {
+    const round = createRound([])
+    expect(push(round, { ...room, t: 3000 }).inhale).toBeNull()
+  })
+})

@@ -60,6 +60,39 @@ async function loaded(url) {
   await until(() => evaluate(`[...document.images].length === 8 && [...document.images].every(i => i.complete && i.naturalWidth > 0)`), 'all bull images loaded')
 }
 
+async function assertAdvantage(kind, label) {
+  const colors = { even: 'rgb(135, 103, 44)', you: 'rgb(25, 115, 74)', bull: 'rgb(182, 59, 42)' }
+  const value = await evaluate(`(() => {
+    const label = document.querySelector('#advantage');
+    return { text: label?.textContent, color: label && getComputedStyle(label).color,
+      marker: getComputedStyle(document.querySelector('.gauge__mark')).borderTopColor,
+      you: getComputedStyle(document.querySelector('.gauge__you')).backgroundColor,
+      bull: getComputedStyle(document.querySelector('.gauge__track')).backgroundColor };
+  })()`)
+  assert.equal(value.text, label)
+  assert.equal(value.color, colors[kind])
+  assert.equal(value.marker, colors[kind])
+  assert.equal(value.you, colors.you)
+  assert.equal(value.bull, colors.bull)
+}
+
+async function checkInhale(reduced = false) {
+  await until(() => evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling') && Number(document.querySelector('#app').style.getPropertyValue('--inhale')) > 0.05 && Number(document.querySelector('#app').style.getPropertyValue('--inhale')) < 0.45`), 'visible inhale starts with the breathing window')
+  const first = await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`)
+  await pause(100)
+  assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), true)
+  assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), first, 'bull expands during its inhale')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
+  assert.equal(await evaluate(`document.querySelector('#bull-bull').classList.contains('is-fierce')`), false, 'mouth closes on inhale')
+  if (reduced) {
+    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), 'none')
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#fighter-bull .fighter__body')).animationName`), 'none')
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
+    await call('Emulation.setEmulatedMedia', { features: [] })
+  }
+}
+
 const state = () => evaluate(`({
   phase: document.querySelector('#app').dataset.phase,
   breath: document.querySelector('#app').dataset.breath,
@@ -143,6 +176,8 @@ try {
   await until(async () => (await state()).button === 'Зажми и тяни', 'fallback control')
   assert.match((await state()).privacy, /Без микрофона/)
   assert.equal((await state()).title, '3')
+  await assertAdvantage('even', 'Равные силы')
+  assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1 }))`)
   await until(async () => (await state()).phase === 'listen', 'countdown to play')
   for (const [width, height] of [[320, 568], [375, 667]]) {
@@ -158,11 +193,17 @@ try {
     assert.ok(layout.privacyBottom <= height, `microphone hint below screen at ${width}×${height}`)
     assert.ok(layout.hintBottom < layout.buttonTop && layout.meterBottom < layout.hintTop, 'controls and instructions must not overlap')
   }
+  await checkInhale(true)
+  await screenshot('daily-inhale')
+  await until(async () => (await state()).phase === 'listen' && (await state()).meter > 8, 'player takes the lead')
+  await assertAdvantage('you', 'Ты ведёшь')
   await until(async () => (await state()).phase === 'done', 'held button wins')
   assert.equal((await state()).title, 'Луг за тобой.')
   assert.equal((await state()).loser, 'fighter-bull')
   assert.ok((await state()).meter > 8)
   await until(async () => (await state()).button === 'Ещё раунд ↗', 'replay after win')
+  await assertAdvantage('you', 'Ты победил')
+  assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await screenshot('win')
   console.log('PASS: permission pending → denied → countdown → hold → win → replay')
 
@@ -171,10 +212,14 @@ try {
   assert.equal((await state()).meter, 0)
   assert.equal((await state()).loser, undefined)
   assert.equal((await state()).requests, 1)
+  await assertAdvantage('even', 'Равные силы')
+  await until(async () => (await state()).phase === 'listen' && (await state()).meter < -8, 'bull takes the lead')
+  await assertAdvantage('bull', 'Бынич ведёт')
   await until(async () => (await state()).phase === 'done', 'unheld button loses')
   assert.equal((await state()).title, 'Раунд за Быничем.')
   assert.equal((await state()).loser, 'fighter-you')
   await until(async () => (await state()).button === 'Ещё раунд ↗', 'replay after loss')
+  await assertAdvantage('bull', 'Бынич победил')
   await screenshot('loss')
   console.log('PASS: replay resets state, remembers denial, and reports loss without holding')
 
@@ -281,6 +326,7 @@ try {
         if (app.dataset.phase === 'done') clearInterval(timer);
       }, 60);
     })()`)
+    await checkInhale()
     await until(async () => (await state()).phase === 'done', 'timed championship win')
     assert.ok((await state()).meter > 8, `timed input must win: ${JSON.stringify(await state())}`)
     await until(async () => !(await state()).hidden, 'championship result action')

@@ -56,14 +56,22 @@
               <img class="bull__face bull__face--pleased" src="./art/bull-pleased.webp" alt="" />
               <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
             </div>
+            <span class="breath-cue" aria-hidden="true">
+              <span>вдох</span>
+              <svg viewBox="0 0 80 50" fill="none">
+                <g class="breath-cue__flow"><path d="M3 8C27 2 35 20 66 16M3 25H72M3 42C27 48 35 30 66 34" /></g>
+                <path d="M62 11L69 16L62 20M67 20L74 25L67 30M62 30L69 34L62 39" />
+              </svg>
+            </span>
           </div>
           <span class="fighter__name" id="bull-name">Бынич</span>
         </div>
       </div>
       <div class="scoreboard" id="scoreboard" hidden>
-        <div class="scoreboard__labels"><span>Твоя сторона</span><span>Сторона Бынича</span></div>
+        <div class="scoreboard__labels"><span>Ты</span><strong id="advantage">Равные силы</strong><span>Бынич</span></div>
         <div class="gauge" role="meter" aria-label="Перетягивание шкалы" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
           <div class="gauge__track"><span class="gauge__you"></span></div>
+          <span class="gauge__center" aria-hidden="true"></span>
           <span class="gauge__mark" aria-hidden="true"></span>
         </div>
         <div class="clock" aria-hidden="true"><span id="clock"></span></div>

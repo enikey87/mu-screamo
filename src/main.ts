@@ -34,6 +34,7 @@ const hint = required<HTMLElement>('#hint')
 const privacy = required<HTMLElement>('#privacy')
 const scoreboard = required<HTMLElement>('#scoreboard')
 const gauge = required<HTMLElement>('.gauge')
+const advantage = required<HTMLElement>('#advantage')
 const air = required<HTMLElement>('#air')
 const airMeter = required<HTMLElement>('.air__track')
 const airFill = required<HTMLElement>('#air-fill')
@@ -91,7 +92,9 @@ function preview(): void {
   app.dataset.mode = mode
   app.classList.remove('is-yours', 'is-his', 'is-ko', 'is-champion', 'is-exhausted')
   app.style.setProperty('--tug', '0')
-  for (const fighter of [youFighter, bullFighter]) fighter.classList.remove('is-hot', 'is-lose')
+  app.style.setProperty('--inhale', '0')
+  advantage.textContent = 'Равные силы'
+  for (const fighter of [youFighter, bullFighter]) fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling')
   for (const face of [youBull, bullBull]) face.classList.remove('is-fierce', 'is-pleased', 'is-puzzled')
   callout.classList.remove('is-count', 'is-pop')
   scoreboard.hidden = true
@@ -274,24 +277,31 @@ function loop(): void {
 }
 
 function render(view: View): void {
+  const yours = view.tug > 0.08
+  const his = view.tug < -0.08
   scoreboard.hidden = false
   app.dataset.phase = view.phase
   app.dataset.breath = view.breath
   app.style.setProperty('--tug', view.tug.toFixed(3))
-  app.classList.toggle('is-yours', view.tug > 0.08)
-  app.classList.toggle('is-his', view.tug < -0.08)
+  app.classList.toggle('is-yours', yours)
+  app.classList.toggle('is-his', his)
   app.classList.toggle('is-ko', view.phase === 'done')
   app.classList.toggle('is-exhausted', view.exhausted)
+  bullFighter.classList.toggle('is-inhaling', view.inhale !== null)
+  app.style.setProperty('--inhale', String(view.inhale === null ? 0 : Math.sin(view.inhale * Math.PI / 2)))
+  advantage.textContent = view.phase === 'done'
+    ? yours ? 'Ты победил' : his ? 'Бынич победил' : 'Ничья'
+    : yours ? 'Ты ведёшь' : his ? 'Бынич ведёт' : 'Равные силы'
   youFighter.classList.toggle('is-hot', view.youHot)
   bullFighter.classList.toggle('is-hot', view.bullHot)
-  youFighter.classList.toggle('is-lose', view.phase === 'done' && view.tug < -0.08)
-  bullFighter.classList.toggle('is-lose', view.phase === 'done' && view.tug > 0.08)
+  youFighter.classList.toggle('is-lose', view.phase === 'done' && his)
+  bullFighter.classList.toggle('is-lose', view.phase === 'done' && yours)
   youBull.classList.toggle('is-fierce', view.youHot)
   bullBull.classList.toggle('is-fierce', view.bullHot)
-  youBull.classList.toggle('is-pleased', view.phase === 'done' && view.tug > 0.08)
-  bullBull.classList.toggle('is-pleased', view.phase === 'done' && view.tug < -0.08)
-  youBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug < -0.08)
-  bullBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug > 0.08)
+  youBull.classList.toggle('is-pleased', view.phase === 'done' && yours)
+  bullBull.classList.toggle('is-pleased', view.phase === 'done' && his)
+  youBull.classList.toggle('is-puzzled', view.phase === 'done' && his)
+  bullBull.classList.toggle('is-puzzled', view.phase === 'done' && yours)
   callout.classList.toggle('is-count', view.phase === 'hush' || view.phase === 'invite')
   if (callout.textContent !== view.shout) {
     callout.textContent = view.shout
@@ -307,7 +317,7 @@ function render(view: View): void {
     airLabel.textContent = view.exhausted ? 'Сделай паузу' : view.youHot ? 'Расходуется' : 'Молчишь — восстанавливаешь'
   }
   gauge.setAttribute('aria-valuenow', String(Math.round(view.tug * 100)))
-  gauge.setAttribute('aria-valuetext', view.tug > 0.08 ? 'Ты тянешь сильнее' : view.tug < -0.08 ? 'Бынич тянет сильнее' : 'Равные силы')
+  gauge.setAttribute('aria-valuetext', advantage.textContent)
   if (view.phase === 'done') privacy.textContent = 'Раунд окончен. Микрофон выключен.'
   clock.style.transform = `scaleX(${Math.max(0, 1 - view.elapsed / ROUND_MS)})`
 }

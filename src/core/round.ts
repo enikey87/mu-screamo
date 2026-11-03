@@ -47,6 +47,7 @@ export interface View {
   puzzled: boolean
   air: number | null
   exhausted: boolean
+  inhale: number | null
 }
 
 export interface Round {
@@ -180,8 +181,18 @@ function viewOf(round: Round, t: number): View {
     tug,
     air: round.rules ? clamp(round.airMs / round.rules.airMs, 0, 1) : null,
     exhausted: round.exhausted,
+    inhale: phase === 'listen' && breath === 'inhale' ? inhaleProgress(round.segments, t - LISTEN_START) : null,
     elapsed: Math.min(Math.max(t, 0), ROUND_MS),
   }
+}
+
+function inhaleProgress(segments: Segment[], t: number): number | null {
+  let start = 0
+  for (const segment of segments) {
+    if (t < start + segment.ms) return segment.kind === 'inhale' ? clamp((t - start) / segment.ms, 0, 1) : null
+    start += segment.ms
+  }
+  return null
 }
 
 function phaseOf(t: number): View['phase'] {
