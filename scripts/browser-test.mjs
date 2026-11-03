@@ -115,17 +115,17 @@ async function checkInhale(reduced = false, recognized = false) {
   assert.ok(Math.abs(fill - visible.percent / 100) < .011, `visible fill must match the reported percentage: ${JSON.stringify(visible)}`)
   const clear = await evaluate(`(() => {
     const label = document.querySelector('#player-time'), badge = document.querySelector('#player-window').getBoundingClientRect();
-    const header = document.querySelector('.sheet').getBoundingClientRect();
+    const body = document.querySelector('#fighter-you .fighter__body').getBoundingClientRect();
     const poster = document.querySelector('#app').getBoundingClientRect();
     return label.scrollWidth <= label.clientWidth && badge.left >= poster.left && badge.right <= poster.right &&
-      badge.bottom <= header.bottom;
+      badge.bottom <= body.top && Math.abs((badge.left + badge.right - body.left - body.right) / 2) < 8;
   })()`)
   assert.equal(clear, true, 'breath timer must fit and stay clear of other text')
   const enemy = await evaluate(`({ kind: document.querySelector('#app').dataset.bullCue, text: document.querySelector('#bull-action').textContent, time: document.querySelector('#bull-time').textContent, fill: new DOMMatrix(getComputedStyle(document.querySelector('#bull-fill')).transform).a, percent: Number(document.querySelector('#bull-meter').getAttribute('aria-valuenow')) })`)
   assert.equal(await evaluate(`document.querySelector('#bull-window').hidden`), false)
   if (enemy.kind === 'inhale' || enemy.kind === 'warning') {
     assert.equal(enemy.text, 'Бынич замычит')
-    assert.match(enemy.time, /^через [0-9]+,[0-9] с$/)
+    assert.match(enemy.time, /^[0-9]+,[0-9] с$/)
     assert.ok(Math.abs(enemy.fill - enemy.percent / 100) < .011, 'visible bull inhale must match the reported progress')
   } else assert.equal(enemy.text, 'Бынич выдохся', 'final inhale must not promise an attack')
   const first = await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`)
@@ -164,23 +164,41 @@ async function assertStableCues(mode) {
       return [['moo', 'МЫЧИ', 'Продолжай «му-у-у» до конца полоски.'],
         ['moo', 'Держи!', 'Продолжай «му-у-у» до конца полоски.'],
         ['pause', 'ПАУЗА', 'Набери воздух — помолчи до восстановления.'],
-        ['ready', 'Приготовься…', 'Скоро твой выход. Жди сигнала.'],
+        ['ready', 'ЖДИ', 'Скоро твой выход. Жди сигнала.'],
         ['count', '4', 'Первым мычит Бынич. Жди сигнала.']].map(([cue, text, detail]) => {
           app.dataset.phase = cue === 'count' ? 'invite' : 'listen';
           label.parentElement.classList.toggle('is-count', cue === 'count');
           app.dataset.cue = cue; label.textContent = text; player.hidden = cue !== 'moo'; hint.textContent = detail;
-          return { text, boxes: ['.sheet', '#callout-label', '.arena', '.gauge', '.rules', '#go'].map(selector => {
+          return { text, boxes: ['.sheet', '#callout-label', '.arena', '.gauge', '#fighter-you .fighter-status', '#fighter-bull .fighter-status', '#go'].map(selector => {
             const node = document.querySelector(selector), box = node.getBoundingClientRect();
             return [selector, box.top, box.height];
-          }), fits: (() => { const range = document.createRange(); range.selectNodeContents(label); const text = range.getBoundingClientRect(), heading = label.parentElement.getBoundingClientRect(); return text.left >= heading.left && text.right <= heading.right && text.bottom <= heading.bottom && hint.scrollHeight <= hint.parentElement.clientHeight; })() };
+          }), fits: (() => { const range = document.createRange(); range.selectNodeContents(label); const text = range.getBoundingClientRect(), heading = label.parentElement.getBoundingClientRect(); return text.left >= heading.left && text.right <= heading.right && text.bottom <= heading.bottom; })() };
         });
     })()`)
     assert.equal(frames.length, 5)
+    await assertArenaFocus(mode, width, height)
     for (const frame of frames) {
       assert.ok(frame.fits, `${mode} instruction clips at ${width}×${height}: ${frame.text}`)
       assert.deepEqual(frame.boxes, frames[0].boxes, `${mode} command must not move layout at ${width}×${height}: ${frame.text}`)
     }
   }
+}
+
+async function assertArenaFocus(mode, width, height) {
+  const layout = await evaluate(`(() => {
+    const box = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height, center: (r.left + r.right) / 2 }; };
+    return { you: box('#fighter-you .fighter__body'), bull: box('#fighter-bull .fighter__body'),
+      yours: box('#fighter-you .fighter-status'), his: box('#fighter-bull .fighter-status'), command: box('#callout'),
+      font: parseFloat(getComputedStyle(document.querySelector('#callout')).fontSize) };
+  })()`)
+  for (const [badge, bull] of [[layout.yours, layout.you], [layout.his, layout.bull]]) {
+    assert.ok(badge.bottom <= bull.top + 2 && Math.abs(badge.center - bull.center) < 8, `timer must be above its fighter at ${mode} ${width}×${height}: ${JSON.stringify(layout)}`)
+  }
+  assert.ok(layout.command.left >= layout.you.right - 3 && layout.command.right <= layout.bull.left + 3, `command must fit between fighters: ${JSON.stringify(layout)}`)
+  assert.ok(Math.abs(layout.command.center - (layout.you.center + layout.bull.center) / 2) < 20, 'command must remain in the center')
+  const y = (layout.command.top + layout.command.bottom) / 2
+  assert.ok(y > layout.you.top && y < layout.you.bottom && y > layout.bull.top && y < layout.bull.bottom, 'command must sit beside the bodies, below both timers')
+  assert.ok(layout.font >= (width >= 1000 ? 40 : 22), 'central command must be large')
 }
 
 async function assertFear(you, bull) {
@@ -273,6 +291,8 @@ try {
   for (const mode of ['daily', 'championship']) {
     await loaded(mode === 'daily' ? url : `${url}#championship`)
     assert.equal(await evaluate(`document.querySelectorAll('.masthead, .tagline, #stage-mood, #date-label, .round-stamp, .versus, .arena__ring, .scoreboard__labels > span').length`), 0, 'remove secondary copy and repeated labels from the page')
+    assert.equal(await evaluate(`document.querySelectorAll('.rules, .voice-level, .timer-caption').length`), 0, 'remove duplicate small captions and voice bars')
+    assert.equal(await evaluate(`['#hint', '#advantage', '#edition-label', '#air'].every(selector => getComputedStyle(document.querySelector(selector)).clipPath === 'inset(50%)')`), true, 'secondary detail must stay out of the visual scene')
     assert.equal((await state()).privacy, '', 'idle screen needs no routine microphone or save footer')
     assert.equal(await evaluate(`document.querySelector('#edition-label').hidden`), mode === 'daily', 'only championship needs encounter context')
     for (const [width, height] of [[280, 560], [320, 568], [375, 667], [390, 844], [768, 1024], [1000, 768], [1280, 720], [1280, 900], [1440, 900], [1920, 1080], [844, 390]]) {
@@ -285,7 +305,6 @@ try {
           buttonRight: go.right, appBottom: app.bottom, bullWidth: bull.width, bullTop: bull.top, headerBottom: header.bottom,
           titleFits: title.scrollWidth <= title.clientWidth, privacyDisplay: getComputedStyle(document.querySelector('#privacy')).display,
           navFont: parseFloat(getComputedStyle(document.querySelector('.mode-nav button')).fontSize),
-          hintFont: parseFloat(getComputedStyle(document.querySelector('#hint')).fontSize),
           timerFont: parseFloat(getComputedStyle(document.querySelector('#player-time')).fontSize) };
       })()`)
       assert.ok(layout.scroll <= width, `${mode} horizontal overflow at ${width}×${height}`)
@@ -294,7 +313,7 @@ try {
       if (height >= 560) assert.ok(layout.buttonBottom <= height, `${mode} start button below screen at ${width}×${height}`)
       if (width >= 1000) {
         assert.ok(layout.width >= 900, `desktop arena must use the available width: ${JSON.stringify(layout)}`)
-        assert.ok(layout.navFont >= 16 && layout.hintFont >= 18 && layout.timerFont >= 12, 'desktop feedback must use readable text')
+        assert.ok(layout.navFont >= 16 && layout.timerFont >= 16, 'desktop feedback must use readable text')
         assert.ok(layout.bullTop >= layout.headerBottom, 'large bull must stay clear of the header')
         if (height >= 900) assert.ok(layout.bullWidth >= 240, 'desktop bulls must be visibly larger than phone sprites')
       }
@@ -312,15 +331,10 @@ try {
       await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
       const controls = await evaluate(`(() => {
         const box = selector => document.querySelector(selector).getBoundingClientRect();
-        return { button: box('#go').bottom, message: box('#privacy').bottom, messageHeight: box('#privacy').height,
-          gauge: box('.gauge').bottom, hint: box('#hint').top, air: box('#air').bottom,
-          windowBottom: box('#player-window').bottom, headerBottom: box('.sheet').bottom };
+        return { button: box('#go').bottom, message: box('#privacy').bottom, gauge: box('.gauge').bottom, buttonTop: box('#go').top };
       })()`)
       assert.ok(controls.button <= height && controls.message <= height, `active ${mode} controls must fit at ${width}×${height}: ${JSON.stringify(controls)}`)
-      assert.ok(controls.messageHeight > 0, 'fallback instruction must stay visible')
-      assert.ok(controls.windowBottom <= controls.headerBottom, `player timer must fit inside its heading: ${JSON.stringify(controls)}`)
-      assert.ok(controls.gauge < controls.hint, 'score must stay clear of the instruction')
-      if (mode === 'championship') assert.ok(controls.air < controls.hint, 'air must stay clear of the instruction')
+      assert.ok(controls.gauge < controls.buttonTop, 'score must stay clear of the button')
     }
     await screenshot(`clean-playing-${mode}-desktop`)
   }
@@ -373,7 +387,7 @@ try {
       await checkInhale()
       await until(() => evaluate(`document.querySelector('#app').dataset.bullCue === 'warning'`), 'last half-second warns of the attack')
       const warning = await evaluate(`({ text: document.querySelector('#bull-time').textContent, color: getComputedStyle(document.querySelector('#bull-window')).color })`)
-      assert.match(warning.text, /^через 0,[1-5] с$/)
+      assert.match(warning.text, /^0,[1-5] с$/)
       assert.equal(warning.color, 'rgb(182, 59, 42)')
       await screenshot('bull-about-to-moo')
       await until(async () => (await state()).breath === 'voice', 'bull begins after opening inhale')
@@ -381,7 +395,7 @@ try {
       assert.equal(await evaluate(`document.querySelector('#app').dataset.bullCue`), 'voice')
       assert.equal(await evaluate(`document.querySelector('#player-meter').getAttribute('aria-valuenow')`), '0')
       assert.equal(await evaluate(`document.querySelector('#player-window').hidden`), true)
-      assert.match((await state()).title, /^(ПАУЗА|Приготовься…)$/)
+      assert.match((await state()).title, /^(ПАУЗА|ЖДИ)$/)
     }
   }
   await loaded(url)
@@ -627,7 +641,7 @@ try {
   assert.equal((await state()).disabled, true)
   await evaluate(`window.__denyMic()`)
   await until(async () => (await state()).button === 'Зажми и тяни', 'fallback control')
-  assert.match((await state()).privacy, /Без микрофона/)
+  assert.equal((await state()).privacy, '', 'the hold button needs no duplicate fallback caption')
   assert.equal((await state()).title, 'Тише…')
   await assertAdvantage('even', 'Равные силы')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
@@ -646,7 +660,7 @@ try {
     await screenshot(`playing-${width}`)
     assert.ok(layout.bottom <= height, `active button below screen at ${width}×${height}`)
     assert.ok(layout.privacyBottom <= height, `microphone hint below screen at ${width}×${height}`)
-    assert.ok(layout.hintBottom < layout.buttonTop && layout.meterBottom < layout.hintTop, 'controls and instructions must not overlap')
+    assert.ok(layout.meterBottom < layout.buttonTop, 'meter and button must not overlap')
   }
   await checkInhale(true, true)
   await assertFear(0, 2 / 3)
@@ -878,9 +892,8 @@ try {
     await screenshot(name)
     assert.ok(layout.scroll <= width, `championship horizontal overflow at ${width}×${height}`)
     assert.ok(layout.buttonBottom <= height && layout.privacyBottom <= height, `championship controls below screen at ${width}×${height}: ${JSON.stringify(layout)}`)
-    assert.ok(layout.hintBottom < layout.buttonTop, 'championship instructions overlap button')
+    assert.ok(layout.stageBottom < layout.buttonTop, 'stage navigation overlaps button')
     if (layout.noticeVisible) assert.ok(layout.noticeBottom <= height, 'save failure notice below screen')
-    if (await evaluate(`!document.querySelector('#air').hidden`)) assert.ok(layout.airBottom < layout.hintTop, 'air overlaps instructions')
   }
 
   await campaignLayout(320, 568, 'championship-preview-small')

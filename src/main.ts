@@ -255,8 +255,8 @@ async function start(): Promise<void> {
   go.disabled = false
   go.textContent = 'Зажми и тяни'
   privacy.textContent = mic
-    ? echoProtected ? '' : 'Эхоподавление недоступно. Лучше играть в наушниках.'
-    : mode === 'championship' ? 'Отпускай кнопку, чтобы набрать воздух.' : 'Без микрофона: удерживай кнопку вместо мычания.'
+    ? echoProtected ? '' : 'Лучше играть в наушниках.'
+    : ''
   render(push(round, { t: 0, db: -90, moo: false, hold: false }))
   if (!mic && go.matches(':active')) holding = true
   frame = requestAnimationFrame(loop)
@@ -401,7 +401,7 @@ function render(view: View): void {
   if (enemy) app.dataset.bullCue = enemy.kind === 'inhale' && enemy.remaining <= 500 ? 'warning' : enemy.kind
   else delete app.dataset.bullCue
   bullAction.textContent = enemy?.kind === 'inhale' ? 'Бынич замычит' : enemy?.kind === 'voice' ? 'Бынич мычит' : 'Бынич выдохся'
-  bullTime.textContent = enemy?.kind === 'inhale' ? `через ${(Math.ceil(enemy.remaining / 100) / 10).toFixed(1).replace('.', ',')} с` : enemy?.kind === 'voice' ? 'Набери воздух' : ''
+  bullTime.textContent = enemy?.kind === 'inhale' ? `${(Math.ceil(enemy.remaining / 100) / 10).toFixed(1).replace('.', ',')} с` : enemy?.kind === 'voice' ? 'МУ-У' : '—'
   bullFill.style.transform = `scaleX(${enemy?.fraction ?? 0})`
   bullMeter.setAttribute('aria-valuenow', String(Math.floor((enemy?.fraction ?? 0) * 100)))
   bullMeter.setAttribute('aria-valuetext', `${bullAction.textContent} ${bullTime.textContent}`.trim())

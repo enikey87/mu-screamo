@@ -191,7 +191,7 @@ function viewOf(round: Round, t: number): View {
   const window = phase === 'listen' ? windowAt(round.segments, t - LISTEN_START) : null
   const inhale = window?.kind === 'inhale' ? window : null
   const cue = phase === 'listen' ? cueOf(round, window) : null
-  const instruction = cue?.kind === 'moo' ? round.youHot ? 'Держи!' : 'МЫЧИ' : cue?.kind === 'ready' ? 'Приготовься…' : 'ПАУЗА'
+  const instruction = cue?.kind === 'moo' ? round.youHot ? 'Держи!' : 'МЫЧИ' : cue?.kind === 'ready' ? 'ЖДИ' : 'ПАУЗА'
   return {
     phase,
     finish: round.finish,

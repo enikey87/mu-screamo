@@ -23,7 +23,7 @@ describe('player instructions', () => {
     const round = schedule()
     expect(at(round, start + 599).shout).toBe('ПАУЗА')
     let view = push(round, { ...quiet, t: start + 600 })
-    expect(view.shout).toBe('Приготовься…')
+    expect(view.shout).toBe('ЖДИ')
     expect(view.cue).toEqual({ kind: 'ready', remaining: null, fraction: null })
     view = push(round, { ...quiet, t: start + 1000 })
     expect(view.shout).toBe('МЫЧИ')
