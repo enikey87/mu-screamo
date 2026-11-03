@@ -23,6 +23,9 @@ const youBull = required<HTMLElement>('#you-bull')
 const bullBull = required<HTMLElement>('#bull-bull')
 const go = required<HTMLButtonElement>('#go')
 const hint = required<HTMLElement>('#hint')
+const privacy = required<HTMLElement>('#privacy')
+const scoreboard = required<HTMLElement>('#scoreboard')
+const gauge = required<HTMLElement>('.gauge')
 
 let audio: AudioContext | null = null
 let mic: Mic | null = null
@@ -40,6 +43,12 @@ const dayLine = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long'
 
 function showDay(date: Date): void {
   dateLabel.textContent = dayLine.format(date)
+  const localDate = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+  dateLabel.setAttribute('datetime', localDate)
 }
 
 showDay(new Date())
@@ -74,6 +83,7 @@ async function start(): Promise<void> {
   running = true
   holding = false
   go.disabled = true
+  go.textContent = 'Включаем микрофон…'
   const ctx = context()
   unlock(ctx)
   const resumed = ctx.resume().catch(() => undefined)
@@ -95,7 +105,11 @@ async function start(): Promise<void> {
   stopVoice = playBull(ctx, bull, origin + (HUSH_MS + INVITE_MS) / 1000)
   go.hidden = mic !== null
   go.disabled = false
-  go.textContent = 'Держи'
+  go.textContent = 'Зажми и тяни'
+  privacy.textContent = mic
+    ? 'Микрофон включён на раунд. Записи нет.'
+    : 'Без микрофона: удерживай кнопку вместо мычания.'
+  render(push(round, { t: 0, db: -90, moo: false, hold: false }))
   if (!mic && go.matches(':active')) holding = true
   frame = requestAnimationFrame(loop)
 }
@@ -122,7 +136,7 @@ function loop(): void {
       if (bout !== id) return
       go.hidden = false
       go.disabled = false
-      go.textContent = 'В бой'
+      go.textContent = 'Ещё раунд ↗'
     }, 900)
     return
   }
@@ -130,6 +144,7 @@ function loop(): void {
 }
 
 function render(view: View): void {
+  scoreboard.hidden = false
   app.dataset.phase = view.phase
   app.dataset.breath = view.breath
   app.style.setProperty('--tug', view.tug.toFixed(3))
@@ -146,7 +161,7 @@ function render(view: View): void {
   bullBull.classList.toggle('is-pleased', view.phase === 'done' && view.tug < -0.08)
   youBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug < -0.08)
   bullBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug > 0.08)
-  callout.classList.toggle('is-cue', view.shout.includes(':'))
+  callout.classList.toggle('is-count', view.phase === 'hush' || view.phase === 'invite')
   if (callout.textContent !== view.shout) {
     callout.textContent = view.shout
     callout.classList.remove('is-pop')
@@ -154,6 +169,9 @@ function render(view: View): void {
     callout.classList.add('is-pop')
   }
   hint.textContent = view.hint
+  gauge.setAttribute('aria-valuenow', String(Math.round(view.tug * 100)))
+  gauge.setAttribute('aria-valuetext', view.tug > 0.08 ? 'Ты тянешь сильнее' : view.tug < -0.08 ? 'Бынич тянет сильнее' : 'Равные силы')
+  if (view.phase === 'done') privacy.textContent = 'Раунд окончен. Микрофон выключен.'
   clock.style.transform = `scaleX(${Math.max(0, 1 - view.elapsed / ROUND_MS)})`
 }
 
