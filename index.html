@@ -6,23 +6,25 @@
     <title>Битва с Быничем</title>
     <meta
       name="description"
-      content="Мычи, пока Бынич набирает воздух. Крик не считается."
+      content="На лугу решают мычанием. Прими вызов Бынича и перетяни шкалу своим му-у-у."
     />
-    <meta name="theme-color" content="#f7f3ea" />
+    <meta name="theme-color" content="#f6eece" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='36' r='22' fill='%23c98a5b'/><ellipse cx='16' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(-30 16 18)'/><ellipse cx='48' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(30 48 18)'/><circle cx='24' cy='34' r='4' fill='%2385c6ec'/><circle cx='40' cy='34' r='4' fill='%2385c6ec'/></svg>" />
   </head>
-  <body style="background-image: url('./art/meadow.webp')">
-    <main class="app" id="app">
+  <body>
+    <main class="app" id="app" aria-label="Деревенский чемпионат">
       <header class="sheet">
-        <div class="clock" aria-hidden="true"><span id="clock"></span></div>
-        <p class="eyebrow" id="date-label"></p>
-        <h1 class="callout" id="callout">Кто кого</h1>
-        <div class="gauge" aria-hidden="true">
-          <div class="gauge__track"><span class="gauge__you"></span></div>
-          <span class="gauge__mark"></span>
+        <div class="masthead">
+          <span>Голосовая дуэль</span>
+          <span>Бынич вызывает</span>
         </div>
+        <div class="edition"><span>Деревенский чемпионат</span><time id="date-label"></time></div>
+        <h1 class="callout" id="callout">Ну что,<br />кто кого?</h1>
+        <p class="tagline">На лугу решают мычанием.</p>
       </header>
-      <div class="arena">
+      <div class="arena" aria-label="Ты против Бынича">
+        <span class="arena__ring" aria-hidden="true"></span>
+        <span class="versus" aria-hidden="true">VS</span>
         <div class="fighter fighter--you" id="fighter-you">
           <div class="fighter__body">
             <div class="bull" id="you-bull">
@@ -46,14 +48,24 @@
           <span class="fighter__name">Бынич</span>
         </div>
       </div>
-      <div class="flash" aria-hidden="true"></div>
-      <div class="dock">
-        <button class="go" id="go" type="button">В бой</button>
-        <p class="hint" id="hint">Мычи, пока Бынич набирает воздух. Крик не считается.</p>
-        <p class="privacy">Микрофон только на время раунда. Запись не ведётся.</p>
+      <div class="scoreboard" id="scoreboard" hidden>
+        <div class="scoreboard__labels"><span>Твоя сторона</span><span>Сторона Бынича</span></div>
+        <div class="gauge" role="meter" aria-label="Перетягивание шкалы" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
+          <div class="gauge__track"><span class="gauge__you"></span></div>
+          <span class="gauge__mark" aria-hidden="true"></span>
+        </div>
+        <div class="clock" aria-hidden="true"><span id="clock"></span></div>
       </div>
+      <div class="flash" aria-hidden="true"></div>
+      <footer class="dock">
+        <div class="rules">
+          <span class="round-stamp">8 сек.</span>
+          <p class="hint" id="hint" role="status">Тяни «му-у-у», пока Бынич вдыхает.<br />Перетяни шкалу на свою сторону.</p>
+        </div>
+        <button class="go" id="go" type="button">Принять вызов <span aria-hidden="true">↗</span></button>
+        <p class="privacy" id="privacy">Нужен микрофон. Голос остаётся у тебя.</p>
+      </footer>
     </main>
-
 
     <script type="module" src="/src/main.ts"></script>
   </body>

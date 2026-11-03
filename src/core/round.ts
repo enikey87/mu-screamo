@@ -129,19 +129,23 @@ function viewOf(round: Round, t: number): View {
   const phase = round.finished ? 'done' : phaseOf(t)
   const breath = breathOf(round, phase, t)
   const done = phase === 'done'
-  const yours = round.pull > 80
+  const tug = clamp(round.pull / KO_PULL_MS, -1, 1)
+  const yours = tug > 0.08
+  const his = tug < -0.08
   return {
     phase,
     breath,
-    shout: shoutOf(phase, breath, t),
+    shout: done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : shoutOf(phase, breath, t),
     youHot: round.youHot,
     bullHot: round.bullHot,
-    hint: hintOf(phase, breath),
+    hint: done
+      ? yours ? 'Бынич просит реванш.' : his ? 'Его вдох — твой шанс. Попробуем ещё?' : 'Никто не уступил. Ещё раунд?'
+      : hintOf(phase, breath),
     proximity: round.proximity,
     cheeks: cheeksOf(phase, breath, round.proximity),
     pleased: done && yours,
-    puzzled: done && round.pull < -80,
-    tug: clamp(round.pull / KO_PULL_MS, -1, 1),
+    puzzled: done && his,
+    tug,
     elapsed: Math.min(Math.max(t, 0), ROUND_MS),
   }
 }
@@ -166,16 +170,16 @@ function shoutOf(phase: View['phase'], breath: View['breath'], t: number): strin
     if (t < 1600) return '2'
     return '1'
   }
-  if (phase === 'listen' && breath === 'inhale') return 'Мычи: мууу'
-  if (phase === 'listen') return 'Бынич'
-  return 'Ко'
+  if (phase === 'listen' && breath === 'inhale') return 'Тяни му-у-у!'
+  if (phase === 'listen') return 'Бынич тянет.'
+  return 'Ничья.'
 }
 
 function hintOf(phase: View['phase'], breath: View['breath']): string {
-  if (phase === 'hush' || phase === 'invite') return 'Тихо до сигнала.'
-  if (phase === 'listen' && breath === 'inhale') return 'Он набирает воздух.'
-  if (phase === 'listen') return 'Шкала идёт к нему.'
-  return 'Можно ещё раз.'
+  if (phase === 'hush' || phase === 'invite') return 'Тихо. Мычим после сигнала.'
+  if (phase === 'listen' && breath === 'inhale') return 'Он на вдохе. Твой выход!'
+  if (phase === 'listen') return 'Лови его вдох — тогда твоё мычание сильнее.'
+  return 'Ещё раунд?'
 }
 
 function touchFaces(round: Round, sample: Sample): void {
