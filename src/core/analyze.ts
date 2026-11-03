@@ -9,10 +9,10 @@ export interface Frame {
 
 const F0_MIN = 70
 const F0_MAX = 460
-const MIN_CLARITY = 0.55
+const MIN_CLARITY = 0.4
 const MAX_CENTROID = 850
 const MAX_F2 = 1300
-const MIN_LOW_SHARE = 0.5
+const MIN_LOW_SHARE = 0.7
 
 export function rmsDb(samples: Float32Array): number {
   let sum = 0
@@ -73,7 +73,7 @@ function estimatePitch(
   const corr = new Float32Array(maxLag + 2)
   let bestLag = 0
   let bestCorr = 0
-  for (let lag = minLag; lag <= maxLag; lag++) {
+  for (let lag = minLag - 1; lag <= maxLag + 1; lag++) {
     let num = 0
     let e1 = 0
     let e2 = 0
@@ -86,7 +86,10 @@ function estimatePitch(
     }
     const c = num / Math.sqrt(e1 * e2 + 1e-12)
     corr[lag] = c
-    if (c > bestCorr) {
+  }
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    const c = corr[lag]
+    if (c > bestCorr && c > corr[lag - 1] && c >= corr[lag + 1]) {
       bestCorr = c
       bestLag = lag
     }
@@ -119,17 +122,17 @@ function spectrumFeatures(
   let low = 0
   let centNum = 0
   let f2 = 0
-  let f2mag = 0
+  let f2Power = 0
   for (let k = 1; k < n >> 1; k++) {
     const f = k * binHz
     // Ниже 150 Гц лежит основной тон, гласная «у» живёт в гармониках над ним.
     if (f < 150 || f > 4000) continue
-    const mag = Math.hypot(re[k], im[k])
-    total += mag
-    centNum += f * mag
-    if (f <= 1000) low += mag
-    if (f >= 500 && f <= 1600 && mag > f2mag) {
-      f2mag = mag
+    const power = re[k] * re[k] + im[k] * im[k]
+    total += power
+    centNum += f * power
+    if (f <= 1000) low += power
+    if (f >= 500 && f <= 1600 && power > f2Power) {
+      f2Power = power
       f2 = f
     }
   }

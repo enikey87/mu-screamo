@@ -224,6 +224,45 @@ try {
   console.log('PASS: replay resets state, remembers denial, and reports loss without holding')
 
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: denied.identifier })
+  const syntheticVoice = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    navigator.mediaDevices.getUserMedia = async () => {
+      const ctx = new AudioContext();
+      await ctx.resume();
+      const source = ctx.createOscillator();
+      source.type = 'sawtooth';
+      source.frequency.value = 140;
+      const tract = ctx.createBiquadFilter();
+      const open = new URL(location.href).searchParams.get('vowel') === 'a';
+      tract.type = open ? 'bandpass' : 'lowpass';
+      tract.frequency.value = open ? 1200 : 700;
+      tract.Q.value = open ? 2 : 1.5;
+      const distortion = ctx.createWaveShaper();
+      distortion.curve = Float32Array.from({ length: 4097 }, (_, i) => Math.max(-1, Math.min(1, (i / 2048 - 1) * 6)));
+      const level = ctx.createGain();
+      level.gain.value = 0;
+      const destination = ctx.createMediaStreamDestination();
+      source.connect(tract).connect(distortion).connect(level).connect(destination);
+      source.start();
+      window.__voiceLevel = level;
+      window.__voiceContext = ctx;
+      window.__voiceTracks = destination.stream.getTracks();
+      return destination.stream;
+    };
+  ` })
+  for (const vowel of ['u', 'a']) {
+    await loaded(`${url}?vowel=${vowel}`)
+    await evaluate(`document.querySelector('#go').click()`)
+    await until(async () => (await state()).phase === 'listen', 'synthetic microphone countdown')
+    assert.equal((await state()).hidden, true, 'audio input must use the microphone path')
+    await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+    await until(async () => (await state()).phase === 'done', `distorted ${vowel} audio round`)
+    assert.equal((await state()).title, vowel === 'u' ? 'Луг за тобой.' : 'Раунд за Быничем.')
+    assert.equal(await evaluate(`window.__voiceTracks.every(track => track.readyState === 'ended')`), true)
+    await evaluate(`window.__voiceContext.close()`)
+  }
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: syntheticVoice.identifier })
+  console.log('PASS: distorted rounded vowel wins through Web Audio microphone input; open vowel loses')
+
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
     window.__micTracks = [];
     const acquire = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
