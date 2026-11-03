@@ -27,3 +27,5 @@ npm run test:browser
 В чемпионате Бынич с каждой встречей свирепеет, а игрок распределяет запас воздуха между его вдохами. Победы открывают следующие встречи, прогресс сохраняется в браузере. [Открыть чемпионат](https://enikey87.github.io/mu-screamo/#championship).
 
 Новый арт: `public/art/bull-championship.webp` — четыре ступени свирепости, два состояния каждой морды; первая встреча использует прежний рисунок. Получен встроенным `image_gen` по исходным цветным быкам, затем сохранён в WebP с прозрачностью. Промпты: `public/art/bull-championship.prompt.txt`.
+
+Фоны чемпионата: [у изгороди](public/art/arena-fence.webp), [во дворе](public/art/arena-yard.webp), [вечерний луг](public/art/arena-evening.webp). Получены встроенным `image_gen`, сохранены в WebP 1200×800. [Промпты](public/art/arena-locations.prompt.txt).
