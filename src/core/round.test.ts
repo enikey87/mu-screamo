@@ -28,6 +28,7 @@ describe('push', () => {
     expect(inhaleTug).toBeGreaterThan(0.3)
     expect(overTug).toBeLessThan(0)
     expect(inhaleTug).toBeGreaterThan(overTug)
+    expect(push(inhale, { ...room, t: 4_000, hold: true }).shout).toBe('Мычи: мууу')
   })
 
   it('lets a scream during the invite leave the rope where it was', () => {

@@ -166,7 +166,7 @@ function shoutOf(phase: View['phase'], breath: View['breath'], t: number): strin
     if (t < 1600) return '2'
     return '1'
   }
-  if (phase === 'listen' && breath === 'inhale') return 'Муу'
+  if (phase === 'listen' && breath === 'inhale') return 'Мычи: мууу'
   if (phase === 'listen') return 'Его'
   return 'Ко'
 }

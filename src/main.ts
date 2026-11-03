@@ -140,6 +140,7 @@ function render(view: View): void {
   bullBull.classList.toggle('is-pleased', view.phase === 'done' && view.tug < -0.08)
   youBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug < -0.08)
   bullBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug > 0.08)
+  callout.classList.toggle('is-cue', view.shout.includes(':'))
   if (callout.textContent !== view.shout) {
     callout.textContent = view.shout
     callout.classList.remove('is-pop')
