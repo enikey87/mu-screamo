@@ -18,11 +18,7 @@
           <button type="button" data-mode="daily" aria-pressed="true">Дуэль дня</button>
           <button type="button" data-mode="championship" aria-pressed="false">Чемпионат луга</button>
         </nav>
-        <div class="masthead">
-          <span>Голосовая дуэль</span>
-          <span>Бынич вызывает</span>
-        </div>
-        <div class="edition"><span id="edition-label">Дуэль дня</span><time id="date-label"></time><span id="stage-mood" hidden></span></div>
+        <p class="edition" id="edition-label" hidden></p>
         <nav class="stage-path" id="stage-path" aria-label="Встречи чемпионата" hidden>
           <button class="stage-step" type="button" data-stage="0">1</button>
           <button class="stage-step" type="button" data-stage="1">2</button>
@@ -31,11 +27,8 @@
           <button class="stage-step" type="button" data-stage="4">5</button>
         </nav>
         <h1 class="callout" id="callout">Ну что,<br />кто кого?</h1>
-        <p class="tagline">На лугу решают мычанием.</p>
       </header>
       <div class="arena" aria-label="Ты против Бынича">
-        <span class="arena__ring" aria-hidden="true"></span>
-        <span class="versus" aria-hidden="true">VS</span>
         <div class="coin-toss" id="coin-toss" hidden aria-hidden="true">
           <div class="coin__spin">
             <span class="coin__face coin__face--you">Ты</span>
@@ -79,7 +72,7 @@
         </div>
       </div>
       <div class="scoreboard" id="scoreboard" hidden>
-        <div class="scoreboard__labels"><span>Ты</span><strong id="advantage">Равные силы</strong><span>Бынич</span></div>
+        <div class="scoreboard__labels"><strong id="advantage">Равные силы</strong></div>
         <div class="gauge" role="meter" aria-label="Перетягивание шкалы" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
           <div class="gauge__track"><span class="gauge__you"></span></div>
           <span class="gauge__center" aria-hidden="true"></span>
@@ -95,11 +88,10 @@
       <div class="flash" aria-hidden="true"></div>
       <footer class="dock">
         <div class="rules">
-          <span class="round-stamp">8 сек.</span>
           <p class="hint" id="hint" role="status">Тяни «му-у-у», пока Бынич вдыхает.<br />Перетяни шкалу на свою сторону.</p>
         </div>
         <button class="go" id="go" type="button">Принять вызов <span aria-hidden="true">↗</span></button>
-        <p class="privacy" id="privacy">Нужен микрофон. Голос остаётся у тебя.</p>
+        <p class="privacy" id="privacy"></p>
         <p class="save-notice" id="save-notice" role="status" hidden>Браузер не сохранил прогресс. Он останется до закрытия страницы.</p>
       </footer>
     </main>

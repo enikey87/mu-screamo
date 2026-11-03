@@ -17,14 +17,11 @@ function required<T extends Element>(selector: string): T {
 }
 
 const app = required<HTMLElement>('#app')
-const dateLabel = required<HTMLElement>('#date-label')
 const editionLabel = required<HTMLElement>('#edition-label')
-const stageMood = required<HTMLElement>('#stage-mood')
 const stagePath = required<HTMLElement>('#stage-path')
 const stageButtons = [...document.querySelectorAll<HTMLButtonElement>('.stage-step')]
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('.mode-nav button')]
 const callout = required<HTMLElement>('#callout')
-const tagline = required<HTMLElement>('.tagline')
 const clock = required<HTMLElement>('#clock')
 const youFighter = required<HTMLElement>('#fighter-you')
 const bullFighter = required<HTMLElement>('#fighter-bull')
@@ -69,17 +66,6 @@ let stageIndex = Math.min(cleared, STAGES.length - 1)
 let mode: 'daily' | 'championship' = location.hash === '#championship' ? 'championship' : 'daily'
 let wonStage = false
 let saved = true
-const dayLine = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
-
-function showDay(date: Date): void {
-  dateLabel.textContent = dayLine.format(date)
-  const localDate = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-')
-  dateLabel.setAttribute('datetime', localDate)
-}
 
 function showPath(): void {
   stageButtons.forEach((button, index) => {
@@ -128,11 +114,10 @@ function preview(): void {
   resetArena()
   go.hidden = false
   go.disabled = false
-  dateLabel.hidden = mode === 'championship'
-  stageMood.hidden = mode !== 'championship'
+  editionLabel.hidden = mode !== 'championship'
+  privacy.textContent = ''
   stagePath.hidden = mode !== 'championship'
   saveNotice.hidden = saved || mode !== 'championship'
-  showDay(new Date())
   modeButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)))
   const url = new URL(location.href)
   url.hash = mode === 'championship' ? 'championship' : ''
@@ -144,25 +129,19 @@ function preview(): void {
     app.style.setProperty('--fury', String(stage.fury))
     app.style.setProperty('--bull-column', `${(stage.fury - 1) * 100 / 3}%`)
     editionLabel.textContent = `Встреча ${stageIndex + 1} / ${STAGES.length} · ${stage.scene.label}`
-    stageMood.textContent = stage.mood
-    bullName.textContent = `Бынич · ${stageIndex + 1}/5`
+    bullName.textContent = 'Бынич'
     callout.textContent = cleared === STAGES.length && stageIndex === STAGES.length - 1 ? 'Реванш чемпиона.' : `${stage.title}.`
-    tagline.textContent = stage.intro
     hint.textContent = 'Громче «му» — сильнее тяга. Лови его вдох и береги воздух.'
     go.textContent = 'Выйти на луг ↗'
-    privacy.textContent = 'Пять встреч. Прогресс сохраняется на этом устройстве.'
     showPath()
   } else {
     delete app.dataset.fury
     delete app.dataset.scene
     app.style.removeProperty('--fury')
-    editionLabel.textContent = 'Дуэль дня'
     bullName.textContent = 'Бынич'
     callout.innerHTML = 'Ну что,<br />кто кого?'
-    tagline.textContent = 'На лугу решают мычанием.'
     hint.innerHTML = 'Громче «му» — сильнее тяга.<br />Тяни на вдохе Бынича. Край шкалы — нокаут.'
     go.innerHTML = 'Принять вызов <span aria-hidden="true">↗</span>'
-    privacy.textContent = 'Нужен микрофон. Голос остаётся у тебя.'
   }
 }
 
@@ -227,7 +206,6 @@ async function start(): Promise<void> {
   const stage = mode === 'championship' ? championshipStage(stageIndex) : null
   starter = tossStarter(Math.random())
   bull = startWith(stage?.bull ?? dailyBull(today), starter)
-  showDay(today)
   const coinReady = animateCoin(id, starter)
   go.disabled = true
   go.textContent = 'Готовимся к бою…'
@@ -263,7 +241,7 @@ async function start(): Promise<void> {
   go.disabled = false
   go.textContent = 'Зажми и тяни'
   privacy.textContent = mic
-    ? echoProtected ? 'Микрофон включён на раунд. Записи нет.' : 'Эхоподавление недоступно. Лучше играть в наушниках.'
+    ? echoProtected ? '' : 'Эхоподавление недоступно. Лучше играть в наушниках.'
     : mode === 'championship' ? 'Отпускай кнопку, чтобы набрать воздух.' : 'Без микрофона: удерживай кнопку вместо мычания.'
   render(push(round, { t: 0, db: -90, moo: false, hold: false }))
   if (!mic && go.matches(':active')) holding = true
@@ -408,7 +386,7 @@ function render(view: View): void {
   }
   gauge.setAttribute('aria-valuenow', String(Math.round(view.tug * 100)))
   gauge.setAttribute('aria-valuetext', advantage.textContent)
-  if (view.phase === 'done') privacy.textContent = 'Раунд окончен. Микрофон выключен.'
+  if (view.phase === 'done') privacy.textContent = ''
   clock.style.transform = `scaleX(${Math.max(0, 1 - view.elapsed / ROUND_MS)})`
 }
 
