@@ -447,7 +447,6 @@ body {
 #fighter-bull.is-inhaling #bull-bull { transform: translateY(calc(var(--inhale, 0) * -5px)) scale(calc(1 + var(--inhale, 0) * .07), calc(1 + var(--inhale, 0) * .09)); }
 .breath-cue { position: absolute; inset: 0; display: none; pointer-events: none; color: var(--breath); }
 #fighter-bull.is-inhaling .breath-cue { display: block; }
-.breath-cue > span { position: absolute; top: 2%; right: 0; padding: 3px 6px; border: 1px solid var(--breath); background: var(--paper); font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
 .breath-cue svg { position: absolute; top: calc(28% + var(--fury, 0) * 3%); left: -15%; width: 42%; overflow: visible; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .breath-cue__flow { stroke-dasharray: 18 7; animation: air-in .65s linear infinite; }
 @keyframes air-in { from { stroke-dashoffset: 25; opacity: .4; } to { stroke-dashoffset: 0; opacity: 1; } }
@@ -468,10 +467,6 @@ body {
   75% { translate: calc(var(--fear) * -2px) 0; rotate: calc(var(--fear) * -.65deg); }
 }
 
-.breath-cue > .breath-cue__timer { border-color: currentColor; font-size: 9px; letter-spacing: 0; text-transform: none; width: 108px; display: grid; gap: 4px; text-align: center; white-space: nowrap; }
-.breath-cue__track { display: block; height: 5px; overflow: hidden; background: #376f8a26; }
-.breath-cue__track > span { display: block; height: 100%; background: currentColor; transform-origin: left; }
-.breath-cue.is-ready { color: var(--lose); }
 .coin-toss { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; perspective: 600px; pointer-events: none; }
 .coin__spin { position: relative; width: 76px; height: 76px; transform-style: preserve-3d; transform: rotateY(var(--coin-stop)); }
 .coin-toss[data-settled='false'] .coin__spin { animation: coin-flip .9s ease-out both; }
@@ -507,7 +502,6 @@ body {
   .privacy { margin-top: 12px; font-size: 14px; }
   #advantage { font-size: 14px; }
   .air__label { font-size: 13px; }
-  .breath-cue > .breath-cue__timer { width: 148px; padding: 6px 8px; font-size: 12px; }
   .coin__spin { width: 100px; height: 100px; }
   .coin__face { font-size: 23px; }
 }
@@ -516,3 +510,11 @@ body {
   .arena, .app[data-mode='championship'] .arena { min-height: 220px; }
   .app[data-mode='championship'] .fighter__body { width: 170px; }
 }
+
+.player-window { display: grid; gap: 6px; width: min(260px, 100%); margin-top: 8px; letter-spacing: 0; text-transform: none; }
+#player-time { font-size: 18px; line-height: 1; font-weight: 700; }
+.player-window__track { display: block; height: 6px; overflow: hidden; background: #19734a26; }
+#player-fill { display: block; height: 100%; background: var(--win); transform-origin: left; }
+.app[data-cue='moo'] .callout { color: var(--win); }
+.app[data-cue='ready'] .callout { color: var(--even); font-size: clamp(26px, 8vw, 40px); }
+@media (min-width: 1000px) { #player-time { font-size: 20px; } }

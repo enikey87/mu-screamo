@@ -101,28 +101,31 @@ async function assertAdvantage(kind, label) {
   assert.equal(value.bull, colors.bull)
 }
 
-async function checkInhale(reduced = false) {
+async function checkInhale(reduced = false, recognized = false) {
   await until(() => evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling') && Number(document.querySelector('#app').style.getPropertyValue('--inhale')) > 0.05 && Number(document.querySelector('#app').style.getPropertyValue('--inhale')) < 0.45`), 'visible inhale starts with the breathing window')
-  const progress = await evaluate(`Number(document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow'))`)
-  assert.ok(progress > 0 && progress < 40)
-  assert.match(await evaluate(`document.querySelector('#bull-breath-label').textContent`), /^(До «му»|Финиш через) [0-9]+,[0-9] с$/)
-  assert.equal(await evaluate(`document.querySelector('#bull-breath-meter').getAttribute('role')`), 'progressbar')
-  const visible = await evaluate(`({ fill: new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a, percent: Number(document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow')) })`)
+  if (recognized) await until(async () => (await state()).title === 'Держи!', 'input recognition reaches the instruction')
+  const progress = await evaluate(`Number(document.querySelector('#player-meter').getAttribute('aria-valuenow'))`)
+  assert.ok(progress > 60 && progress <= 100)
+  assert.match(await evaluate(`document.querySelector('#player-time').textContent`), /^[0-9]+,[0-9] с$/)
+  assert.equal(await evaluate(`document.querySelector('#player-meter').getAttribute('role')`), 'progressbar')
+  assert.equal(await evaluate(`document.querySelector('#player-window').hidden`), false)
+  assert.equal((await state()).title, recognized ? 'Держи!' : 'МЫЧИ')
+  const visible = await evaluate(`({ fill: new DOMMatrix(getComputedStyle(document.querySelector('#player-fill')).transform).a, percent: Number(document.querySelector('#player-meter').getAttribute('aria-valuenow')) })`)
   const fill = visible.fill
   assert.ok(Math.abs(fill - visible.percent / 100) < .011, `visible fill must match the reported percentage: ${JSON.stringify(visible)}`)
   const clear = await evaluate(`(() => {
-    const label = document.querySelector('#bull-breath-label'), badge = label.parentElement.getBoundingClientRect();
+    const label = document.querySelector('#player-time'), badge = document.querySelector('#player-window').getBoundingClientRect();
     const header = document.querySelector('.sheet').getBoundingClientRect();
     const poster = document.querySelector('#app').getBoundingClientRect();
     return label.scrollWidth <= label.clientWidth && badge.left >= poster.left && badge.right <= poster.right &&
-      badge.top >= header.bottom;
+      badge.bottom <= header.bottom;
   })()`)
   assert.equal(clear, true, 'breath timer must fit and stay clear of other text')
   const first = await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`)
   await pause(100)
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), true)
-  assert.ok(await evaluate(`Number(document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow'))`) > progress, 'inhale progress must keep filling')
-  assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a`) > fill, 'rendered bar must keep filling')
+  assert.ok(await evaluate(`Number(document.querySelector('#player-meter').getAttribute('aria-valuenow'))`) < progress, 'player time must keep shrinking')
+  assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#player-fill')).transform).a`) < fill, 'rendered player bar must keep shrinking')
   assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), first, 'bull expands during its inhale')
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
   assert.equal(await evaluate(`document.querySelector('#bull-bull').classList.contains('is-fierce')`), false, 'mouth closes on inhale')
@@ -131,10 +134,16 @@ async function checkInhale(reduced = false) {
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), 'none')
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('#fighter-bull .fighter__body')).animationName`), 'none')
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
-    const reducedFill = await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a`)
+    const reducedFill = await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#player-fill')).transform).a`)
     await pause(100)
-    assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a`) > reducedFill, 'reduced motion must retain a functional progress indicator')
+    assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#player-fill')).transform).a`) < reducedFill, 'reduced motion must retain a functional progress indicator')
     await call('Emulation.setEmulatedMedia', { features: [] })
+  }
+  if (recognized && reduced) {
+    await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerup'))`)
+    await until(async () => (await state()).title === 'МЫЧИ', 'releasing input removes recognition feedback')
+    await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2 }))`)
+    await until(async () => (await state()).title === 'Держи!', 'recognized input confirms holding again')
   }
 }
 
@@ -165,7 +174,7 @@ const state = () => evaluate(`({
   phase: document.querySelector('#app').dataset.phase,
   finish: document.querySelector('#app').dataset.finish,
   breath: document.querySelector('#app').dataset.breath,
-  title: document.querySelector('#callout').textContent,
+  title: document.querySelector('#callout-label').textContent,
   button: document.querySelector('#go').textContent,
   hidden: document.querySelector('#go').hidden,
   disabled: document.querySelector('#go').disabled,
@@ -201,6 +210,14 @@ try {
   await call('Runtime.enable')
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
     window.__coinValue = .75; Math.random = () => window.__coinValue;
+    window.__gameContexts = [];
+    const NativeAudioContext = window.AudioContext;
+    window.AudioContext = new Proxy(NativeAudioContext, { construct(Target, args) {
+      const ctx = new Target(...args); window.__gameContexts.push(ctx); ctx.__starts = [];
+      const create = ctx.createOscillator.bind(ctx);
+      ctx.createOscillator = () => { const osc = create(), start = osc.start.bind(osc); osc.start = at => { ctx.__starts.push(at); start(at); }; return osc; };
+      return ctx;
+    } });
     window.__echoPeers = []; window.__gameTracks = [];
     const NativePeer = window.RTCPeerConnection;
     window.RTCPeerConnection = new Proxy(NativePeer, { construct(Target, args) {
@@ -233,7 +250,7 @@ try {
           titleFits: title.scrollWidth <= title.clientWidth, privacyDisplay: getComputedStyle(document.querySelector('#privacy')).display,
           navFont: parseFloat(getComputedStyle(document.querySelector('.mode-nav button')).fontSize),
           hintFont: parseFloat(getComputedStyle(document.querySelector('#hint')).fontSize),
-          timerFont: parseFloat(getComputedStyle(document.querySelector('#bull-breath-label')).fontSize) };
+          timerFont: parseFloat(getComputedStyle(document.querySelector('#player-time')).fontSize) };
       })()`)
       assert.ok(layout.scroll <= width, `${mode} horizontal overflow at ${width}×${height}`)
       assert.ok(layout.titleFits && layout.buttonRight <= width && layout.buttonBottom <= layout.appBottom, `${mode} main controls must fit: ${JSON.stringify(layout)}`)
@@ -260,17 +277,34 @@ try {
         const box = selector => document.querySelector(selector).getBoundingClientRect();
         return { button: box('#go').bottom, message: box('#privacy').bottom, messageHeight: box('#privacy').height,
           gauge: box('.gauge').bottom, hint: box('#hint').top, air: box('#air').bottom,
-          badgeTop: box('.breath-cue__timer').top, headerBottom: box('.sheet').bottom };
+          windowBottom: box('#player-window').bottom, headerBottom: box('.sheet').bottom };
       })()`)
       assert.ok(controls.button <= height && controls.message <= height, `active ${mode} controls must fit at ${width}×${height}: ${JSON.stringify(controls)}`)
       assert.ok(controls.messageHeight > 0, 'fallback instruction must stay visible')
-      assert.ok(controls.badgeTop >= controls.headerBottom, `inhale timer must stay below the header: ${JSON.stringify(controls)}`)
+      assert.ok(controls.windowBottom <= controls.headerBottom, `player timer must fit inside its heading: ${JSON.stringify(controls)}`)
       assert.ok(controls.gauge < controls.hint, 'score must stay clear of the instruction')
       if (mode === 'championship') assert.ok(controls.air < controls.hint, 'air must stay clear of the instruction')
     }
     await screenshot(`clean-playing-${mode}-desktop`)
   }
   console.log('PASS: simplified page preserves essential controls and scales up on desktop')
+  await loaded(url)
+  await evaluate(`(() => {
+    window.__countLabels = [];
+    const label = document.querySelector('#callout-label');
+    new MutationObserver(() => { const ctx = window.__gameContexts[0]; if (ctx) window.__countLabels.push({ text: label.textContent, time: ctx.currentTime * 1000, phase: document.querySelector('#app').dataset.phase }); }).observe(label, { childList: true });
+    document.querySelector('#go').click(); window.__denyMic();
+  })()`)
+  await until(async () => (await state()).phase === 'listen', 'rhythmic countdown reaches the fight')
+  const counts = await evaluate(`({ labels: window.__countLabels, origin: window.__gameContexts[0].__starts[0] * 1000 - 400 })`)
+  for (const [index, text] of ['3', '2', '1'].entries()) {
+    const event = counts.labels.find(item => item.text === text);
+    assert.ok(event, `missing visible count ${text}: ${JSON.stringify(counts)}`)
+    assert.ok(Math.abs(event.time - counts.origin - (400 + index * 2000 / 3)) < 80, `visible ${text} must match its scheduled sound: ${JSON.stringify(counts)}`)
+  }
+  const startEvent = counts.labels.find(item => item.phase === 'listen')
+  assert.ok(startEvent && Math.abs(startEvent.time - counts.origin - 2400) < 80, 'fight must begin on the fourth beat')
+  console.log('PASS: visible countdown and fight start follow the same evenly spaced audio clock')
   for (const first of ['you', 'bull']) {
     await loaded(url)
     await evaluate(`window.__coinValue = ${first === 'you' ? .25 : .75}; document.querySelector('#go').click()`)
@@ -301,7 +335,9 @@ try {
     if (first === 'you') {
       await checkInhale()
       await until(async () => (await state()).breath === 'voice', 'bull begins after opening inhale')
-      assert.equal(await evaluate(`document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow')`), '0')
+      assert.equal(await evaluate(`document.querySelector('#player-meter').getAttribute('aria-valuenow')`), '0')
+      assert.equal(await evaluate(`document.querySelector('#player-window').hidden`), true)
+      assert.match((await state()).title, /^(ПАУЗА|Приготовься…)$/)
     }
   }
   await loaded(url)
@@ -480,9 +516,20 @@ try {
     const stopped = new OfflineAudioContext(1, 48000, 48000);
     const stop = playBull(stopped, { pitch: 110, fury: 4, segments: [{ kind: 'voice', ms: 800 }] }, .1);
     stop(); stop();
-    return { routed, profiles: results, stoppedPeak: Math.max(...(await stopped.startRendering()).getChannelData(0).map(Math.abs)) };
+    const countContext = new OfflineAudioContext(1, 144000, 48000);
+    playCountdown(countContext, .1);
+    const countData = (await countContext.startRendering()).getChannelData(0), countOnsets = [];
+    for (let i = 0; i < countData.length; i++) {
+      if (Math.abs(countData[i]) > .01) { countOnsets.push(i / 48000); i += 14400; }
+    }
+    return { countOnsets, routed, profiles: results, stoppedPeak: Math.max(...(await stopped.startRendering()).getChannelData(0).map(Math.abs)) };
   })()`)
   console.log('Audio renders:', JSON.stringify(rendered))
+  assert.equal(rendered.countOnsets.length, 4, 'all four countdown sounds must actually render')
+  for (let index = 0; index < 4; index++) {
+    assert.ok(Math.abs(rendered.countOnsets[index] - (.5 + index * 2 / 3)) < .02, 'rendered onset must match the shared beat')
+    if (index > 0) assert.ok(Math.abs(rendered.countOnsets[index] - rendered.countOnsets[index - 1] - 2 / 3) < .003, 'audible countdown intervals must be equal')
+  }
   assert.ok(rendered.routed[0] > 0.1, 'game audio must be audible through its output bus')
   assert.equal(rendered.routed[1], 0, 'neither bull nor countdown may bypass the echo reference bus')
   assert.equal(rendered.profiles.length, 5)
@@ -537,7 +584,7 @@ try {
   await evaluate(`window.__denyMic()`)
   await until(async () => (await state()).button === 'Зажми и тяни', 'fallback control')
   assert.match((await state()).privacy, /Без микрофона/)
-  assert.equal((await state()).title, '3')
+  assert.equal((await state()).title, 'Тише…')
   await assertAdvantage('even', 'Равные силы')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1 }))`)
@@ -557,7 +604,7 @@ try {
     assert.ok(layout.privacyBottom <= height, `microphone hint below screen at ${width}×${height}`)
     assert.ok(layout.hintBottom < layout.buttonTop && layout.meterBottom < layout.hintTop, 'controls and instructions must not overlap')
   }
-  await checkInhale(true)
+  await checkInhale(true, true)
   await assertFear(0, 2 / 3)
   assert.ok((await fearDisplacement('bull'))?.x > 0, 'bull must visibly tremble during its inhale')
   await screenshot('daily-inhale')
@@ -571,7 +618,7 @@ try {
   await assertAdvantage('you', (await state()).finish === 'knockout' ? 'Ты победил нокаутом' : 'Ты победил')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await assertFear(0, 0)
-  assert.equal(await evaluate(`document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow')`), '0')
+  assert.equal(await evaluate(`document.querySelector('#player-meter').getAttribute('aria-valuenow')`), '0')
   assert.equal(await fearDisplacement('bull'), null)
   await screenshot('win')
   console.log('PASS: permission pending → denied → countdown → hold → win → replay')
@@ -795,7 +842,7 @@ try {
   await until(async () => (await state()).phase === 'listen', 'championship begins')
   await campaignLayout(1280, 900, 'championship-playing-desktop')
   await campaignLayout(320, 568, 'championship-playing-small')
-  await until(() => evaluate(`document.querySelector('#bull-breath-label').textContent.startsWith('Финиш через')`), 'last inhale announces finish rather than another moo')
+  await until(() => evaluate(`document.querySelector('#app').dataset.cue === 'moo' && Number(document.querySelector('#clock').style.transform.slice(7, -1)) < .25`), 'last player window remains available before the finish')
   await until(async () => (await state()).phase === 'done', 'championship loss')
   await until(async () => (await state()).button === 'Попробовать ещё ↗', 'retry lost stage')
   assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 1)
@@ -825,7 +872,7 @@ try {
         if (app.dataset.phase === 'done') clearInterval(timer);
       }, 60);
     })()`)
-    await checkInhale()
+    await checkInhale(false, true)
     await until(async () => (await state()).phase === 'done', 'timed championship win')
     assert.ok((await state()).meter > 8, `timed input must win: ${JSON.stringify(await state())}`)
     await until(async () => !(await state()).hidden, 'championship result action')
@@ -863,7 +910,7 @@ try {
   await until(async () => (await state()).phase === 'listen', 'hard-stage replay')
   await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3 }))`)
   await until(() => evaluate(`document.querySelector('#app').classList.contains('is-exhausted')`), 'continuous input exhausts air')
-  assert.equal((await state()).title, 'Вдохни.')
+  assert.equal((await state()).title, 'ПАУЗА')
   assert.equal(await fearDisplacement('bull'), null, 'an exhausted moo must not scare the opponent')
   assert.equal(await evaluate(`document.querySelector('.air__track').getAttribute('aria-valuenow')`), '0')
   await campaignLayout(320, 568, 'championship-exhausted-small')

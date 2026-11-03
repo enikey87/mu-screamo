@@ -1,5 +1,4 @@
-/** После тишины калибровки: «3», «2», «1» и сигнал к бою. */
-export const COUNT_AT_MS = [420, 800, 1_600, 2_400] as const
+import { COUNT_AT_MS } from '../core/timing'
 
 const FREQ = [523, 659, 784, 1_047]
 

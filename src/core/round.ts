@@ -1,6 +1,7 @@
 import { playerPower } from './voice-power'
 import { breathAt, segmentEndOffset, type Segment } from './daily'
 import {
+  COUNT_AT_MS,
   HUSH_MS,
   INHALE_BULL,
   INHALE_PLAYER,
@@ -53,6 +54,7 @@ export interface View {
   exhausted: boolean
   inhale: number | null
   inhaleRemaining: number | null
+  cue: { kind: 'ready' | 'moo' | 'pause'; remaining: number | null; fraction: number | null } | null
 }
 
 export interface Round {
@@ -185,19 +187,25 @@ function viewOf(round: Round, t: number): View {
   const yours = tug > 0.08
   const his = tug < -0.08
   const recovering = phase === 'listen' && round.exhausted
-  const inhale = phase === 'listen' ? inhaleAt(round.segments, t - LISTEN_START) : null
+  const window = phase === 'listen' ? windowAt(round.segments, t - LISTEN_START) : null
+  const inhale = window?.kind === 'inhale' ? window : null
+  const cue = phase === 'listen' ? cueOf(round, window) : null
+  const instruction = cue?.kind === 'moo' ? round.youHot ? 'Держи!' : 'МЫЧИ' : cue?.kind === 'ready' ? 'Приготовься…' : 'ПАУЗА'
   return {
     phase,
     finish: round.finish,
     breath,
-    shout: round.finish === 'knockout' ? 'Нокаут!' : done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : recovering ? 'Вдохни.' : shoutOf(phase, breath, t),
+    shout: round.finish === 'knockout' ? 'Нокаут!' : done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : cue ? instruction : countdownAt(t),
     youHot: round.youHot,
     bullHot: round.bullHot,
     youPower: round.youPower,
     bullPower: round.bullPower,
     hint: done
       ? yours ? 'Бынич просит реванш.' : his ? 'Его вдох — твой шанс. Попробуем ещё?' : 'Никто не уступил. Ещё раунд?'
-      : recovering ? 'Воздух кончился. Сделай паузу, чтобы восстановиться.' : hintOf(phase, breath),
+      : recovering ? 'Набери воздух — помолчи до восстановления.'
+        : cue?.kind === 'moo' ? 'Продолжай «му-у-у» до конца полоски.'
+          : cue?.kind === 'ready' ? 'Скоро твой выход. Жди сигнала.'
+            : cue ? 'Сейчас Бынич. Набери воздух.' : 'Тихо. Мычим после сигнала.',
     proximity: round.proximity,
     cheeks: cheeksOf(phase, breath, round.proximity),
     pleased: done && yours,
@@ -207,18 +215,31 @@ function viewOf(round: Round, t: number): View {
     exhausted: round.exhausted,
     inhale: inhale?.progress ?? null,
     inhaleRemaining: inhale?.remaining ?? null,
+    cue,
     elapsed: Math.min(Math.max(t, 0), ROUND_MS),
   }
 }
 
-function inhaleAt(segments: Segment[], t: number): { progress: number; remaining: number } | null {
+function windowAt(segments: Segment[], t: number): { kind: Segment['kind']; progress: number; remaining: number; duration: number; next: Segment['kind'] | null } | null {
   let start = 0
-  for (const segment of segments) {
-    if (t < start + segment.ms) return segment.kind === 'inhale'
-      ? { progress: clamp((t - start) / segment.ms, 0, 1), remaining: start + segment.ms - t } : null
+  for (const [index, segment] of segments.entries()) {
+    if (t < start + segment.ms) return { kind: segment.kind, progress: clamp((t - start) / segment.ms, 0, 1), remaining: start + segment.ms - t, duration: segment.ms, next: segments[index + 1]?.kind ?? null }
     start += segment.ms
   }
   return null
+}
+
+function cueOf(round: Round, window: ReturnType<typeof windowAt>): View['cue'] {
+  const pause = { kind: 'pause', remaining: null, fraction: null } as const
+  if (round.exhausted || !window) return pause
+  if (window.kind === 'inhale') {
+    const remaining = Math.min(window.remaining, round.rules ? round.airMs : Infinity)
+    if (remaining <= 0) return pause
+    const duration = Math.min(window.duration, round.rules?.airMs ?? Infinity)
+    return { kind: 'moo', remaining, fraction: clamp(remaining / duration, 0, 1) }
+  }
+  return window.next === 'inhale' && window.remaining <= 400
+    ? { kind: 'ready', remaining: null, fraction: null } : pause
 }
 
 function phaseOf(t: number): View['phase'] {
@@ -235,22 +256,11 @@ function breathOf(round: Round, phase: View['phase'], t: number): View['breath']
   return 'inhale'
 }
 
-function shoutOf(phase: View['phase'], breath: View['breath'], t: number): string {
-  if (phase === 'hush' || phase === 'invite') {
-    if (t < 800) return '3'
-    if (t < 1600) return '2'
-    return '1'
-  }
-  if (phase === 'listen' && breath === 'inhale') return 'Тяни му-у-у!'
-  if (phase === 'listen') return 'Бынич тянет.'
-  return 'Ничья.'
-}
-
-function hintOf(phase: View['phase'], breath: View['breath']): string {
-  if (phase === 'hush' || phase === 'invite') return 'Тихо. Мычим после сигнала.'
-  if (phase === 'listen' && breath === 'inhale') return 'Он на вдохе. Твой выход!'
-  if (phase === 'listen') return 'Лови его вдох — тогда твоё мычание сильнее.'
-  return 'Ещё раунд?'
+function countdownAt(t: number): string {
+  if (t < HUSH_MS) return 'Тише…'
+  if (t < COUNT_AT_MS[1]) return '3'
+  if (t < COUNT_AT_MS[2]) return '2'
+  return '1'
 }
 
 function touchFaces(round: Round, sample: Sample): void {
