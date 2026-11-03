@@ -18,7 +18,7 @@
           <button type="button" data-mode="daily" aria-pressed="true">Дуэль дня</button>
           <button type="button" data-mode="championship" aria-pressed="false">Чемпионат луга</button>
         </nav>
-        <p class="edition" id="edition-label" hidden></p>
+        <p class="edition sr-only" id="edition-label" hidden></p>
         <nav class="stage-path" id="stage-path" aria-label="Встречи чемпионата" hidden>
           <button class="stage-step" type="button" data-stage="0">1</button>
           <button class="stage-step" type="button" data-stage="1">2</button>
@@ -26,21 +26,10 @@
           <button class="stage-step" type="button" data-stage="3">4</button>
           <button class="stage-step" type="button" data-stage="4">5</button>
         </nav>
-        <h1 class="callout" id="callout">
-          <span id="callout-label">Ну что,<br />кто кого?</span>
-          <span class="turn-windows">
-            <span class="player-window" id="player-window" hidden>
-              <span class="timer-caption">Твоё му<span id="player-time"></span></span>
-              <span class="player-window__track" id="player-meter" role="progressbar" aria-label="Осталось мычать" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="player-fill"></span></span>
-            </span>
-            <span class="bull-window" id="bull-window" hidden>
-              <span class="timer-caption"><span id="bull-action"></span><span id="bull-time"></span></span>
-              <span class="bull-window__track" id="bull-meter" role="progressbar" aria-label="Вдох Бынича до следующего му" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="bull-fill"></span></span>
-            </span>
-          </span>
-        </h1>
+
       </header>
       <div class="arena" aria-label="Ты против Бынича">
+        <h1 class="callout" id="callout"><span id="callout-label">Ну что,<br />кто кого?</span></h1>
         <div class="coin-toss" id="coin-toss" hidden aria-hidden="true">
           <div class="coin__spin">
             <span class="coin__face coin__face--you">Ты</span>
@@ -48,6 +37,13 @@
           </div>
         </div>
         <div class="fighter fighter--you" id="fighter-you">
+          <div class="fighter-status">
+            <span class="fighter__name">Ты</span>
+            <span class="player-window" id="player-window" hidden>
+              <span id="player-time"></span>
+              <span class="player-window__track" id="player-meter" role="progressbar" aria-label="Осталось мычать" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="player-fill"></span></span>
+            </span>
+          </div>
           <div class="fighter__body">
             <div class="bull" id="you-bull">
               <img class="bull__face bull__face--calm" src="./art/bull-calm.webp" alt="" />
@@ -56,10 +52,15 @@
               <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
             </div>
           </div>
-          <span class="fighter__name">Ты</span>
-          <span class="voice-level" aria-hidden="true"><span></span></span>
         </div>
         <div class="fighter fighter--bull" id="fighter-bull">
+          <div class="fighter-status">
+            <span class="fighter__name" id="bull-name">Бынич</span>
+            <span class="bull-window" id="bull-window" hidden>
+              <span id="bull-action" class="sr-only"></span><span id="bull-time"></span>
+              <span class="bull-window__track" id="bull-meter" role="progressbar" aria-label="Вдох Бынича до следующего му" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="bull-fill"></span></span>
+            </span>
+          </div>
           <div class="fighter__body">
             <div class="bull" id="bull-bull">
               <span class="bull__championship" aria-hidden="true"></span>
@@ -75,12 +76,10 @@
               </svg>
             </span>
           </div>
-          <span class="fighter__name" id="bull-name">Бынич</span>
-          <span class="voice-level" aria-hidden="true"><span></span></span>
         </div>
       </div>
       <div class="scoreboard" id="scoreboard" hidden>
-        <div class="scoreboard__labels"><strong id="advantage">Равные силы</strong></div>
+        <strong id="advantage" class="sr-only">Равные силы</strong>
         <div class="gauge" role="meter" aria-label="Перетягивание шкалы" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
           <div class="gauge__track"><span class="gauge__you"></span></div>
           <span class="gauge__center" aria-hidden="true"></span>
@@ -88,16 +87,14 @@
         </div>
         <div class="clock" aria-hidden="true"><span id="clock"></span></div>
       </div>
-      <div class="air" id="air" hidden>
+      <div class="air sr-only" id="air" hidden>
         <div class="air__label"><span>Твой воздух</span><span id="air-label">Молчишь — восстанавливаешь</span></div>
         <div class="air__track" role="meter" aria-label="Запас воздуха" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span id="air-fill"></span></div>
       </div>
       <span class="champion-seal" id="champion-seal" hidden>Чемпион<br />луга</span>
       <div class="flash" aria-hidden="true"></div>
       <footer class="dock">
-        <div class="rules">
-          <p class="hint" id="hint" role="status">Тяни «му-у-у», пока Бынич вдыхает.<br />Перетяни шкалу на свою сторону.</p>
-        </div>
+        <p class="sr-only" id="hint" role="status">Тяни «му-у-у», пока Бынич вдыхает.<br />Перетяни шкалу на свою сторону.</p>
         <button class="go" id="go" type="button">Принять вызов <span aria-hidden="true">↗</span></button>
         <p class="privacy" id="privacy"></p>
         <p class="save-notice" id="save-notice" role="status" hidden>Браузер не сохранил прогресс. Он останется до закрытия страницы.</p>

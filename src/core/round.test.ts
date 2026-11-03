@@ -99,7 +99,7 @@ describe('championship copy', () => {
     const round = ready([{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 7000 }])
     walk(round, 500, start + 900, {})
     const voice = push(round, { ...room, t: start + 999 })
-    expect(voice.shout).toBe('Приготовься…')
+    expect(voice.shout).toBe('ЖДИ')
     expect(voice.hint).toBe('Скоро твой выход. Жди сигнала.')
     const inhale = push(round, { ...room, t: start + 1000, hold: true })
     expect(inhale.shout).toBe('Держи!')
