@@ -1,3 +1,4 @@
+import { bullVoice } from '../core/voice-power'
 import type { DailyBull } from '../core/daily'
 
 const PHRASE_PEAK = 0.22
@@ -51,7 +52,8 @@ export function mooCentroid(f0: number, sampleRate: number): number {
   return den > 0 ? num / den : 0
 }
 
-export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number): () => void {
+export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number, destination: AudioNode = ctx.destination): () => void {
+  const profile = bullVoice(bull.fury)
   const osc = ctx.createOscillator()
   osc.setPeriodicWave(glottalWave(ctx))
   const noise = ctx.createBufferSource()
@@ -61,11 +63,27 @@ export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number
   noiseEnv.gain.value = 0.0001
   const mix = ctx.createGain()
   osc.connect(mix)
+  const sub = ctx.createOscillator()
+  sub.type = 'triangle'
+  const split = ctx.createGain()
+  split.gain.value = profile.roughness * 0.5
+  sub.connect(split)
+  split.connect(mix)
+  const rasp = ctx.createWaveShaper()
+  const curve = new Float32Array(2049)
+  const drive = 1 + profile.roughness * 4
+  for (let i = 0; i < curve.length; i++) {
+    const x = i * 2 / (curve.length - 1) - 1
+    curve[i] = profile.roughness === 0 ? x : Math.tanh(drive * x) / Math.tanh(drive)
+  }
+  rasp.curve = curve
+  rasp.oversample = '2x'
+  mix.connect(rasp)
   noise.connect(noiseEnv)
   noiseEnv.connect(mix)
 
   const glideStage = TRACT.find((item) => item.glideTo !== undefined)
-  let node: AudioNode = mix
+  let node: AudioNode = rasp
   let glide: BiquadFilterNode | null = null
   for (const stage of TRACT) {
     const filter = ctx.createBiquadFilter()
@@ -81,23 +99,26 @@ export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number
   const amp = ctx.createGain()
   amp.gain.value = 0.0001
   node.connect(amp)
-  amp.connect(ctx.destination)
+  amp.connect(destination)
 
   let at = startAt
   for (const seg of bull.segments) {
     const dur = seg.ms / 1000
     const end = at + dur
-    amp.gain.setValueAtTime(0.0001, at)
+    amp.gain.setValueAtTime(seg.kind === 'voice' ? 0.0001 : 0, at)
     noiseEnv.gain.setValueAtTime(0.0001, at)
     if (seg.kind === 'voice' && dur > 0.25) {
       const points = phraseContour(bull.pitch, dur)
       osc.frequency.setValueAtTime(points[0].hz, at)
+      sub.frequency.setValueAtTime(points[0].hz / 2, at)
       for (const point of points.slice(1)) {
         osc.frequency.exponentialRampToValueAtTime(point.hz, at + point.at)
+        sub.frequency.exponentialRampToValueAtTime(point.hz / 2, at + point.at)
       }
-      amp.gain.exponentialRampToValueAtTime(PHRASE_PEAK, at + 0.085)
-      amp.gain.exponentialRampToValueAtTime(PHRASE_PEAK * 0.62, end - 0.14)
+      amp.gain.exponentialRampToValueAtTime(PHRASE_PEAK * profile.power, at + 0.085)
+      amp.gain.exponentialRampToValueAtTime(PHRASE_PEAK * profile.power * 0.62, end - 0.14)
       amp.gain.exponentialRampToValueAtTime(0.0001, end - 0.015)
+      amp.gain.setValueAtTime(0, end)
       noiseEnv.gain.exponentialRampToValueAtTime(NOISE_ONSET, at + 0.028)
       noiseEnv.gain.exponentialRampToValueAtTime(NOISE_BREATH, at + 0.08)
       noiseEnv.gain.exponentialRampToValueAtTime(0.0001, end - 0.015)
@@ -111,8 +132,10 @@ export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number
 
   const stopAt = at + 0.02
   osc.start(startAt)
+  sub.start(startAt)
   noise.start(startAt)
   osc.stop(stopAt)
+  sub.stop(stopAt)
   noise.stop(stopAt)
 
   return () => {
@@ -120,9 +143,10 @@ export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number
     try {
       amp.gain.cancelScheduledValues(now)
       noiseEnv.gain.cancelScheduledValues(now)
-      amp.gain.setValueAtTime(0.0001, now)
+      amp.gain.setValueAtTime(0, now)
       noiseEnv.gain.setValueAtTime(0.0001, now)
       osc.stop()
+      sub.stop()
       noise.stop()
     } catch {
       /* расписание уже доиграло */

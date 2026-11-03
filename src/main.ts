@@ -5,6 +5,7 @@ import { createRound, push, type Round, type View } from './core/round'
 import { HUSH_MS, INVITE_MS, ROUND_MS } from './core/timing'
 import { playCountdown } from './audio/count'
 import { openMic, type Mic } from './audio/mic'
+import { createPlayback } from './audio/output'
 import { playBull } from './audio/voice'
 import './style.css'
 
@@ -46,6 +47,7 @@ let audio: AudioContext | null = null
 let mic: Mic | null = null
 let stopVoice: (() => void) | null = null
 let stopCount: (() => void) | null = null
+let stopOutput: (() => void) | null = null
 let frame = 0
 let bout = 0
 let running = false
@@ -89,12 +91,17 @@ function preview(): void {
   wonStage = false
   delete app.dataset.phase
   delete app.dataset.breath
+  delete app.dataset.finish
+  delete app.dataset.echoCancellation
   app.dataset.mode = mode
   app.classList.remove('is-yours', 'is-his', 'is-ko', 'is-champion', 'is-exhausted')
   app.style.setProperty('--tug', '0')
   app.style.setProperty('--inhale', '0')
   advantage.textContent = 'Равные силы'
-  for (const fighter of [youFighter, bullFighter]) fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling')
+  for (const fighter of [youFighter, bullFighter]) {
+    fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling')
+    fighter.style.setProperty('--power', '0')
+  }
   for (const face of [youBull, bullBull]) face.classList.remove('is-fierce', 'is-pleased', 'is-puzzled')
   callout.classList.remove('is-count', 'is-pop')
   scoreboard.hidden = true
@@ -122,7 +129,7 @@ function preview(): void {
     bullName.textContent = `Бынич · ${stageIndex + 1}/5`
     callout.textContent = cleared === STAGES.length && stageIndex === STAGES.length - 1 ? 'Реванш чемпиона.' : `${stage.title}.`
     tagline.textContent = stage.intro
-    hint.textContent = 'Тяни «му-у-у» на его вдохе. В паузах восстанавливай воздух.'
+    hint.textContent = 'Громче «му» — сильнее тяга. Лови его вдох и береги воздух.'
     go.textContent = 'Выйти на луг ↗'
     privacy.textContent = 'Пять встреч. Прогресс сохраняется на этом устройстве.'
     showPath()
@@ -134,7 +141,7 @@ function preview(): void {
     bullName.textContent = 'Бынич'
     callout.innerHTML = 'Ну что,<br />кто кого?'
     tagline.textContent = 'На лугу решают мычанием.'
-    hint.innerHTML = 'Тяни «му-у-у», пока Бынич вдыхает.<br />Перетяни шкалу на свою сторону.'
+    hint.innerHTML = 'Громче «му» — сильнее тяга.<br />Тяни на вдохе Бынича. Край шкалы — нокаут.'
     go.innerHTML = 'Принять вызов <span aria-hidden="true">↗</span>'
     privacy.textContent = 'Нужен микрофон. Голос остаётся у тебя.'
   }
@@ -211,6 +218,11 @@ async function start(): Promise<void> {
   const openedMic = await opened
   if (id !== bout) { openedMic?.stop(); return }
   mic = openedMic
+  const playback = mic ? await createPlayback(ctx) : null
+  if (id !== bout) { playback?.stop(); return }
+  stopOutput = playback?.stop ?? null
+  const echoProtected = Boolean(mic?.echoCancellation && playback?.echoReference)
+  app.dataset.echoCancellation = mic ? String(echoProtected) : 'unavailable'
   if (ctx.state !== 'running') await ctx.resume().catch(() => undefined)
   if (id !== bout) return
   const today = new Date()
@@ -219,13 +231,13 @@ async function start(): Promise<void> {
   showDay(today)
   round = createRound(bull.segments, stage?.rules)
   origin = ctx.currentTime
-  stopCount = playCountdown(ctx, origin)
-  stopVoice = playBull(ctx, bull, origin + (HUSH_MS + INVITE_MS) / 1000)
+  stopCount = playCountdown(ctx, origin, playback?.destination)
+  stopVoice = playBull(ctx, bull, origin + (HUSH_MS + INVITE_MS) / 1000, playback?.destination)
   go.hidden = mic !== null
   go.disabled = false
   go.textContent = 'Зажми и тяни'
   privacy.textContent = mic
-    ? 'Микрофон включён на раунд. Записи нет.'
+    ? echoProtected ? 'Микрофон включён на раунд. Записи нет.' : 'Эхоподавление недоступно. Лучше играть в наушниках.'
     : mode === 'championship' ? 'Отпускай кнопку, чтобы набрать воздух.' : 'Без микрофона: удерживай кнопку вместо мычания.'
   render(push(round, { t: 0, db: -90, moo: false, hold: false }))
   if (!mic && go.matches(':active')) holding = true
@@ -284,16 +296,21 @@ function render(view: View): void {
   scoreboard.hidden = false
   app.dataset.phase = view.phase
   app.dataset.breath = view.breath
+  if (view.finish) app.dataset.finish = view.finish
+  else delete app.dataset.finish
   app.style.setProperty('--tug', view.tug.toFixed(3))
   app.classList.toggle('is-yours', yours)
   app.classList.toggle('is-his', his)
-  app.classList.toggle('is-ko', view.phase === 'done')
+  app.classList.toggle('is-ko', view.finish === 'knockout')
   app.classList.toggle('is-exhausted', view.exhausted)
   bullFighter.classList.toggle('is-inhaling', view.inhale !== null)
   app.style.setProperty('--inhale', String(view.inhale === null ? 0 : Math.sin(view.inhale * Math.PI / 2)))
   advantage.textContent = view.phase === 'done'
-    ? yours ? 'Ты победил' : his ? 'Бынич победил' : 'Ничья'
+    ? yours ? view.finish === 'knockout' ? 'Ты победил нокаутом' : 'Ты победил'
+      : his ? view.finish === 'knockout' ? 'Бынич победил нокаутом' : 'Бынич победил' : 'Ничья'
     : yours ? 'Ты ведёшь' : his ? 'Бынич ведёт' : 'Равные силы'
+  youFighter.style.setProperty('--power', String(view.youPower / 1.5))
+  bullFighter.style.setProperty('--power', String(view.bullPower / 1.5))
   youFighter.classList.toggle('is-hot', view.youHot)
   bullFighter.classList.toggle('is-hot', view.bullHot)
   youFighter.classList.toggle('is-lose', view.phase === 'done' && his)
@@ -351,4 +368,6 @@ function release(): void {
   stopVoice = null
   stopCount?.()
   stopCount = null
+  stopOutput?.()
+  stopOutput = null
 }

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as pause } from 'node:timers/promises'
-import { preview } from 'vite'
+import { build, preview } from 'vite'
 
 const scratch = await mkdtemp(join(tmpdir(), 'mu-screamo-browser-'))
 const server = await preview({ preview: { host: '127.0.0.1', port: 0 } })
@@ -120,6 +120,7 @@ async function checkInhale(reduced = false) {
 
 const state = () => evaluate(`({
   phase: document.querySelector('#app').dataset.phase,
+  finish: document.querySelector('#app').dataset.finish,
   breath: document.querySelector('#app').dataset.breath,
   title: document.querySelector('#callout').textContent,
   button: document.querySelector('#go').textContent,
@@ -155,6 +156,16 @@ try {
   }
   await call('Page.enable')
   await call('Runtime.enable')
+  await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    window.__echoPeers = []; window.__gameTracks = [];
+    const NativePeer = window.RTCPeerConnection;
+    window.RTCPeerConnection = new Proxy(NativePeer, { construct(Target, args) {
+      const peer = new Target(...args); window.__echoPeers.push(peer);
+      const add = peer.addTrack.bind(peer);
+      peer.addTrack = (track, ...rest) => { window.__gameTracks.push(track); return add(track, ...rest); };
+      return peer;
+    } });
+  ` })
   const denied = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
     window.__micRequests = 0;
     navigator.mediaDevices.getUserMedia = () => {
@@ -245,6 +256,76 @@ try {
   console.log('PASS: unavailable background retains the location palette and playable round controls')
 
   await loaded(url)
+  async function audioModule(entry) {
+    const built = await build({ configFile: false, logLevel: 'silent', build: {
+      write: false, minify: false, lib: { entry, formats: ['es'] },
+    } })
+    const code = [built].flat().flatMap(result => result.output).find(output => output.type === 'chunk').code
+    return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
+  }
+  const voiceModule = await audioModule('src/audio/voice.ts')
+  const countModule = await audioModule('src/audio/count.ts')
+  const rendered = await evaluate(`(async () => {
+    const { playBull } = await import(${JSON.stringify(voiceModule)});
+    const { playCountdown } = await import(${JSON.stringify(countModule)});
+    const routed = [];
+    for (const muted of [false, true]) {
+      const ctx = new OfflineAudioContext(1, 144000, 48000);
+      const bus = ctx.createGain(); bus.gain.value = muted ? 0 : 1; bus.connect(ctx.destination);
+      playBull(ctx, { pitch: 110, fury: 4, segments: [{ kind: 'voice', ms: 1000 }] }, .1, bus);
+      playCountdown(ctx, 0, bus);
+      const data = (await ctx.startRendering()).getChannelData(0);
+      routed.push(data.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0));
+    }
+    const results = [];
+    for (const fury of [0, 1, 2, 3, 4]) {
+      const ctx = new OfflineAudioContext(1, 96000, 48000);
+      playBull(ctx, { pitch: 110, fury, segments: [{ kind: 'voice', ms: 1200 }, { kind: 'inhale', ms: 800 }] }, 0);
+      const data = (await ctx.startRendering()).getChannelData(0);
+      let energy = 0, peak = 0, tail = 0, subRe = 0, subIm = 0;
+      const points = [[0, 114.4], [.192, 118.8], [.66, 108.9], [1.2, 101.2]];
+      function phase(t) {
+        let cycles = 0;
+        for (let i = 1; i < points.length; i++) {
+          const [a, fa] = points[i - 1], [b, fb] = points[i];
+          const dt = Math.max(0, Math.min(t, b) - a), rate = Math.log(fb / fa) / (b - a);
+          cycles += fa * Math.expm1(rate * dt) / rate;
+        }
+        return cycles * Math.PI;
+      }
+      for (let i = 0; i < data.length; i++) {
+        peak = Math.max(peak, Math.abs(data[i]));
+        if (i >= 7200 && i < 50400) {
+          energy += data[i] ** 2;
+          subRe += data[i] * Math.cos(phase(i / 48000));
+          subIm += data[i] * Math.sin(phase(i / 48000));
+        }
+        if (i >= 62400) tail += data[i] ** 2;
+      }
+      const rms = Math.sqrt(energy / 43200);
+      results.push({ fury, rms, peak, tail, split: Math.hypot(subRe, subIm) / 43200 / rms });
+    }
+    const stopped = new OfflineAudioContext(1, 48000, 48000);
+    const stop = playBull(stopped, { pitch: 110, fury: 4, segments: [{ kind: 'voice', ms: 800 }] }, .1);
+    stop(); stop();
+    return { routed, profiles: results, stoppedPeak: Math.max(...(await stopped.startRendering()).getChannelData(0).map(Math.abs)) };
+  })()`)
+  console.log('Audio renders:', JSON.stringify(rendered))
+  assert.ok(rendered.routed[0] > 0.1, 'game audio must be audible through its output bus')
+  assert.equal(rendered.routed[1], 0, 'neither bull nor countdown may bypass the echo reference bus')
+  assert.equal(rendered.profiles.length, 5)
+  for (const [index, profile] of rendered.profiles.entries()) {
+    assert.ok(profile.rms > 0.01 && profile.peak < 0.95, `audible unclipped voice: ${JSON.stringify(profile)}`)
+    assert.ok(profile.tail < 1e-8, 'bull must be silent on inhale')
+    if (index > 0) {
+      assert.ok(profile.rms > rendered.profiles[index - 1].rms, 'angrier voice must render louder')
+      assert.ok(profile.split > rendered.profiles[index - 1].split, 'angrier voice must render stronger subharmonics')
+    }
+  }
+  assert.ok(rendered.profiles[4].split > rendered.profiles[0].split + 0.05)
+  assert.equal(rendered.stoppedPeak, 0)
+  console.log('PASS: actual offline audio gets louder and more split; inhales and stop are silent')
+
   assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
   assert.match((await state()).button, /Принять вызов/)
@@ -307,11 +388,11 @@ try {
   await until(async () => (await state()).phase === 'listen' && (await state()).meter > 8, 'player takes the lead')
   await assertAdvantage('you', 'Ты ведёшь')
   await until(async () => (await state()).phase === 'done', 'held button wins')
-  assert.equal((await state()).title, 'Луг за тобой.')
+  assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : 'Луг за тобой.')
   assert.equal((await state()).loser, 'fighter-bull')
   assert.ok((await state()).meter > 8)
   await until(async () => (await state()).button === 'Ещё раунд ↗', 'replay after win')
-  await assertAdvantage('you', 'Ты победил')
+  await assertAdvantage('you', (await state()).finish === 'knockout' ? 'Ты победил нокаутом' : 'Ты победил')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await screenshot('win')
   console.log('PASS: permission pending → denied → countdown → hold → win → replay')
@@ -325,10 +406,10 @@ try {
   await until(async () => (await state()).phase === 'listen' && (await state()).meter < -8, 'bull takes the lead')
   await assertAdvantage('bull', 'Бынич ведёт')
   await until(async () => (await state()).phase === 'done', 'unheld button loses')
-  assert.equal((await state()).title, 'Раунд за Быничем.')
+  assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : 'Раунд за Быничем.')
   assert.equal((await state()).loser, 'fighter-you')
   await until(async () => (await state()).button === 'Ещё раунд ↗', 'replay after loss')
-  await assertAdvantage('bull', 'Бынич победил')
+  await assertAdvantage('bull', (await state()).finish === 'knockout' ? 'Бынич победил нокаутом' : 'Бынич победил')
   await screenshot('loss')
   console.log('PASS: replay resets state, remembers denial, and reports loss without holding')
 
@@ -363,9 +444,26 @@ try {
     await evaluate(`document.querySelector('#go').click()`)
     await until(async () => (await state()).phase === 'listen', 'synthetic microphone countdown')
     assert.equal((await state()).hidden, true, 'audio input must use the microphone path')
-    await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+    assert.equal(await evaluate(`window.__echoPeers.length === 2 && window.__echoPeers.every(p => p.connectionState === 'connected')`), true)
+    if (vowel === 'u') {
+      await evaluate(`window.__voiceLevel.gain.value = 0.025`)
+      await until(() => evaluate(`Number(document.querySelector('#fighter-you').style.getPropertyValue('--power')) > .1`), 'soft moo produces a visible level')
+      const soft = await evaluate(`Number(document.querySelector('#fighter-you').style.getPropertyValue('--power'))`)
+      await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+      await until(() => evaluate(`Number(document.querySelector('#fighter-you').style.getPropertyValue('--power')) > ${soft + .1}`), 'louder moo increases visible pressure')
+    } else await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+
     await until(async () => (await state()).phase === 'done', `distorted ${vowel} audio round`)
-    assert.equal((await state()).title, vowel === 'u' ? 'Луг за тобой.' : 'Раунд за Быничем.')
+    assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : vowel === 'u' ? 'Луг за тобой.' : 'Раунд за Быничем.')
+    assert.equal((await state()).loser, vowel === 'u' ? 'fighter-bull' : 'fighter-you')
+    if (vowel === 'u') {
+      assert.equal((await state()).finish, 'knockout')
+      assert.equal((await state()).title, 'Нокаут!')
+      assert.equal(await evaluate(`document.querySelector('#app').classList.contains('is-ko')`), true)
+      assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#fighter-bull')).animationName`), 'none')
+      await screenshot('knockout')
+    }
+    assert.equal(await evaluate(`window.__echoPeers.every(p => p.connectionState === 'closed') && window.__gameTracks.length === 1 && window.__gameTracks.every(t => t.readyState === 'ended') && !document.querySelector('audio[data-echo-reference]')`), true)
     assert.equal(await evaluate(`window.__voiceTracks.every(track => track.readyState === 'ended')`), true)
     await evaluate(`window.__voiceContext.close()`)
   }
@@ -376,6 +474,7 @@ try {
     window.__micTracks = [];
     const acquire = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = async constraints => {
+      window.__captureConstraints = constraints;
       const stream = await acquire(constraints);
       window.__micTracks.push(...stream.getTracks());
       return stream;
@@ -385,11 +484,55 @@ try {
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).hidden, 'microphone mode hides fallback control')
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'live')`), true)
+  assert.deepEqual(await evaluate(`window.__captureConstraints.audio`), { echoCancellation: true, noiseSuppression: false, autoGainControl: false })
+  const settings = await evaluate(`window.__micTracks[0].getSettings()`);
+  assert.equal(settings.echoCancellation, true)
+  assert.equal(settings.autoGainControl, false)
+  assert.equal(settings.noiseSuppression, false)
+  console.log('Native capture settings:', JSON.stringify({ echoCancellation: settings.echoCancellation, autoGainControl: settings.autoGainControl, noiseSuppression: settings.noiseSuppression }))
+  const reference = await evaluate(`(async () => {
+    const player = document.querySelector('audio[data-echo-reference]');
+    const stats = [...(await window.__echoPeers[1].getStats()).values()];
+    return { connected: window.__echoPeers.map(p => p.connectionState),
+      servers: window.__echoPeers.map(p => p.getConfiguration().iceServers),
+      playing: player && !player.paused && player.srcObject.getAudioTracks().length === 1,
+      received: stats.some(s => s.type === 'inbound-rtp' && s.kind === 'audio' && s.bytesReceived > 0),
+      noMic: window.__gameTracks.length === 1 && window.__gameTracks.every(t => !window.__micTracks.includes(t)),
+      protected: document.querySelector('#app').dataset.echoCancellation };
+  })()`)
+  assert.deepEqual(reference, { connected: ['connected', 'connected'], servers: [[], []], playing: true, received: true, noMic: true, protected: 'true' })
   await until(async () => (await state()).phase === 'done', 'microphone round finishes')
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
   assert.equal((await state()).privacy, 'Раунд окончен. Микрофон выключен.')
   await until(async () => !(await state()).hidden && (await state()).button === 'Ещё раунд ↗', 'microphone replay')
   console.log('PASS: real Chrome fake microphone opens, fallback hides, tracks close, replay returns')
+  const unavailableReference = await call('Page.addScriptToEvaluateOnNewDocument', { source: `window.RTCPeerConnection = undefined;` })
+  await loaded(url)
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(async () => (await state()).phase === 'hush', 'missing WebRTC keeps round playable')
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.echoCancellation`), 'false')
+  assert.match((await state()).privacy, /наушниках/)
+  await evaluate(`document.querySelector('.mode-nav [data-mode="championship"]').click()`)
+  assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended') && !document.querySelector('audio[data-echo-reference]')`), true)
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: unavailableReference.identifier })
+  console.log('PASS: local WebRTC receives game audio without microphone transmission; unavailable reference falls back honestly')
+  const pendingReference = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    const createOffer = RTCPeerConnection.prototype.createOffer;
+    RTCPeerConnection.prototype.createOffer = function (...args) {
+      return new Promise((resolve, reject) => {
+        window.__resolveReference = () => createOffer.apply(this, args).then(resolve, reject);
+      });
+    };
+  ` })
+  await loaded(url)
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(() => evaluate(`typeof window.__resolveReference === 'function'`), 'echo reference is pending')
+  await evaluate(`document.querySelector('.mode-nav [data-mode="championship"]').click(); window.__resolveReference();`)
+  await until(() => evaluate(`window.__echoPeers.length === 2 && window.__echoPeers.every(p => p.connectionState === 'closed') && !document.querySelector('audio[data-echo-reference]')`), 'late playback is discarded')
+  assert.equal((await state()).phase, undefined)
+  assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended') && window.__gameTracks.every(t => t.readyState === 'ended')`), true)
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: pendingReference.identifier })
+  console.log('PASS: mode change during echo setup closes the late connection and never starts a stale round')
   const delayed = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
     const acquireLater = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = constraints => new Promise(resolve => {
@@ -453,6 +596,8 @@ try {
   await until(async () => (await state()).button === 'Попробовать ещё ↗', 'retry lost stage')
   assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 1)
   assert.equal(await evaluate(`localStorage.getItem('bynich.championship.v1')`), null)
+  assert.equal((await state()).finish, 'time')
+  assert.equal(await evaluate(`document.querySelector('#app').classList.contains('is-ko')`), false)
   console.log('PASS: campaign loss retries the same encounter without unlocking anything')
   await assertScene(...stageScenes[0])
 
@@ -517,8 +662,17 @@ try {
   assert.equal(await evaluate(`document.querySelector('.air__track').getAttribute('aria-valuenow')`), '0')
   await campaignLayout(320, 568, 'championship-exhausted-small')
   await until(async () => (await state()).phase === 'done', 'continuous input loses hard encounter')
-  assert.equal((await state()).title, 'Раунд за Быничем.')
+  assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : 'Раунд за Быничем.')
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 5)
+  await until(async () => (await state()).button === 'Попробовать ещё ↗', 'hard encounter retry')
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(async () => (await state()).phase === 'done', 'quiet player is knocked out by the final bull')
+  assert.equal((await state()).finish, 'knockout')
+  assert.equal((await state()).title, 'Нокаут!')
+  assert.equal((await state()).loser, 'fighter-you')
+  assert.equal(await evaluate(`document.querySelector('#app').classList.contains('is-ko')`), true)
+  await assertAdvantage('bull', 'Бынич победил нокаутом')
+  await screenshot('bull-knockout')
   await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#stage-path').hidden && document.querySelector('#air').hidden`), true)

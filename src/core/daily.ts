@@ -8,6 +8,7 @@ export interface Segment {
 export interface DailyBull {
   dateKey: string
   label: string
+  fury?: number
   pitch: number
   segments: Segment[]
 }

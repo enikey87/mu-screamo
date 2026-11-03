@@ -3,13 +3,13 @@ export const COUNT_AT_MS = [420, 800, 1_600, 2_400] as const
 
 const FREQ = [523, 659, 784, 1_047]
 
-export function playCountdown(ctx: AudioContext, origin: number): () => void {
+export function playCountdown(ctx: AudioContext, origin: number, destination: AudioNode = ctx.destination): () => void {
   const osc = ctx.createOscillator()
   osc.type = 'triangle'
   const gain = ctx.createGain()
   gain.gain.value = 0.0001
   osc.connect(gain)
-  gain.connect(ctx.destination)
+  gain.connect(destination)
   COUNT_AT_MS.forEach((ms, i) => {
     const t = origin + ms / 1000
     const dur = i === COUNT_AT_MS.length - 1 ? 0.22 : 0.13
