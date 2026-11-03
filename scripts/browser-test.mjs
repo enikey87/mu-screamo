@@ -56,7 +56,7 @@ async function loaded(url) {
   const destination = new URL(url)
   destination.searchParams.set('browser-load', String(++navigation))
   await call('Page.navigate', { url: destination.href })
-  await until(() => evaluate(`Boolean(document.querySelector('#date-label')?.textContent)`), 'app module loaded')
+  await until(() => evaluate(`Boolean(document.querySelector('#app')?.style.getPropertyValue('--tug'))`), 'app module loaded')
   await until(() => evaluate(`[...document.images].length === 8 && [...document.images].every(i => i.complete && i.naturalWidth > 0)`), 'all bull images loaded')
 }
 
@@ -112,10 +112,10 @@ async function checkInhale(reduced = false) {
   assert.ok(Math.abs(fill - visible.percent / 100) < .011, `visible fill must match the reported percentage: ${JSON.stringify(visible)}`)
   const clear = await evaluate(`(() => {
     const label = document.querySelector('#bull-breath-label'), badge = label.parentElement.getBoundingClientRect();
-    const tagline = document.querySelector('.tagline'), style = getComputedStyle(tagline), text = tagline.getBoundingClientRect();
+    const header = document.querySelector('.sheet').getBoundingClientRect();
     const poster = document.querySelector('#app').getBoundingClientRect();
     return label.scrollWidth <= label.clientWidth && badge.left >= poster.left && badge.right <= poster.right &&
-      (style.display === 'none' || style.visibility === 'hidden' || text.bottom <= badge.top || text.top >= badge.bottom || text.right <= badge.left || text.left >= badge.right);
+      badge.top >= header.bottom;
   })()`)
   assert.equal(clear, true, 'breath timer must fit and stay clear of other text')
   const first = await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`)
@@ -217,6 +217,60 @@ try {
       return new Promise((_, reject) => { window.__denyMic = () => reject(new DOMException('Denied', 'NotAllowedError')); });
     };
   ` })
+  for (const mode of ['daily', 'championship']) {
+    await loaded(mode === 'daily' ? url : `${url}#championship`)
+    assert.equal(await evaluate(`document.querySelectorAll('.masthead, .tagline, #stage-mood, #date-label, .round-stamp, .versus, .arena__ring, .scoreboard__labels > span').length`), 0, 'remove secondary copy and repeated labels from the page')
+    assert.equal((await state()).privacy, '', 'idle screen needs no routine microphone or save footer')
+    assert.equal(await evaluate(`document.querySelector('#edition-label').hidden`), mode === 'daily', 'only championship needs encounter context')
+    for (const [width, height] of [[280, 560], [320, 568], [375, 667], [390, 844], [768, 1024], [1000, 768], [1280, 720], [1280, 900], [1440, 900], [1920, 1080], [844, 390]]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+      const layout = await evaluate(`(() => {
+        const rect = selector => document.querySelector(selector).getBoundingClientRect();
+        const app = rect('#app'), go = rect('#go'), header = rect('.sheet'), bull = rect('#fighter-bull .fighter__body');
+        const title = document.querySelector('#callout');
+        return { width: app.width, scroll: document.documentElement.scrollWidth, buttonBottom: go.bottom,
+          buttonRight: go.right, appBottom: app.bottom, bullWidth: bull.width, bullTop: bull.top, headerBottom: header.bottom,
+          titleFits: title.scrollWidth <= title.clientWidth, privacyDisplay: getComputedStyle(document.querySelector('#privacy')).display,
+          navFont: parseFloat(getComputedStyle(document.querySelector('.mode-nav button')).fontSize),
+          hintFont: parseFloat(getComputedStyle(document.querySelector('#hint')).fontSize),
+          timerFont: parseFloat(getComputedStyle(document.querySelector('#bull-breath-label')).fontSize) };
+      })()`)
+      assert.ok(layout.scroll <= width, `${mode} horizontal overflow at ${width}×${height}`)
+      assert.ok(layout.titleFits && layout.buttonRight <= width && layout.buttonBottom <= layout.appBottom, `${mode} main controls must fit: ${JSON.stringify(layout)}`)
+      assert.equal(layout.privacyDisplay, 'none', 'empty service message must take no space')
+      if (height >= 560) assert.ok(layout.buttonBottom <= height, `${mode} start button below screen at ${width}×${height}`)
+      if (width >= 1000) {
+        assert.ok(layout.width >= 900, `desktop arena must use the available width: ${JSON.stringify(layout)}`)
+        assert.ok(layout.navFont >= 16 && layout.hintFont >= 18 && layout.timerFont >= 12, 'desktop feedback must use readable text')
+        assert.ok(layout.bullTop >= layout.headerBottom, 'large bull must stay clear of the header')
+        if (height >= 900) assert.ok(layout.bullWidth >= 240, 'desktop bulls must be visibly larger than phone sprites')
+      }
+      if (width === 1280 && height === 900 || width === 390) await screenshot(`clean-${mode}-${width}`)
+    }
+  }
+  for (const mode of ['daily', 'championship']) {
+    await loaded(mode === 'daily' ? url : `${url}#championship`)
+    await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false })
+    await evaluate(`window.__coinValue = .25; document.querySelector('#go').click(); window.__denyMic()`)
+    await until(async () => (await state()).phase === 'listen', 'desktop fallback round begins')
+    await checkInhale()
+    for (const [width, height] of [[1280, 720], [1000, 768], [1280, 900], [1920, 1080]]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+      const controls = await evaluate(`(() => {
+        const box = selector => document.querySelector(selector).getBoundingClientRect();
+        return { button: box('#go').bottom, message: box('#privacy').bottom, messageHeight: box('#privacy').height,
+          gauge: box('.gauge').bottom, hint: box('#hint').top, air: box('#air').bottom,
+          badgeTop: box('.breath-cue__timer').top, headerBottom: box('.sheet').bottom };
+      })()`)
+      assert.ok(controls.button <= height && controls.message <= height, `active ${mode} controls must fit at ${width}×${height}: ${JSON.stringify(controls)}`)
+      assert.ok(controls.messageHeight > 0, 'fallback instruction must stay visible')
+      assert.ok(controls.badgeTop >= controls.headerBottom, `inhale timer must stay below the header: ${JSON.stringify(controls)}`)
+      assert.ok(controls.gauge < controls.hint, 'score must stay clear of the instruction')
+      if (mode === 'championship') assert.ok(controls.air < controls.hint, 'air must stay clear of the instruction')
+    }
+    await screenshot(`clean-playing-${mode}-desktop`)
+  }
+  console.log('PASS: simplified page preserves essential controls and scales up on desktop')
   for (const first of ['you', 'bull']) {
     await loaded(url)
     await evaluate(`window.__coinValue = ${first === 'you' ? .25 : .75}; document.querySelector('#go').click()`)
@@ -231,7 +285,7 @@ try {
     assert.equal(await evaluate(`document.querySelector('#app').dataset.starter`), first)
     assert.equal((await state()).title, first === 'you' ? 'Первым мычишь ты!' : 'Первым мычит Бынич!')
     assert.ok(Math.abs(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('.coin__spin')).transform).m11`) - (first === 'you' ? 1 : -1)) < .001, 'the visible coin face must match the announced starter')
-    for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
+    for (const [width, height] of [[320, 568], [390, 844], [844, 390], [1000, 768], [1280, 900]]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
       const fits = await evaluate(`(() => { const coin = document.querySelector('#coin-toss').getBoundingClientRect(); const app = document.querySelector('#app').getBoundingClientRect(); const title = document.querySelector('#callout'); return coin.left >= app.left && coin.right <= app.right && coin.top >= app.top && coin.bottom <= app.bottom && title.scrollWidth <= title.clientWidth; })()`)
       assert.equal(fits, true, 'coin and first-turn announcement fit small screens')
@@ -301,7 +355,7 @@ try {
     if ([0, 2, 4].includes(stage)) await screenshot(`location-${stageScenes[stage][0]}`)
   }
   await evaluate(`document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '* { transition: none !important; }' }))`)
-  for (const [width, height] of [[320, 844], [280, 844], [320, 568], [350, 844], [360, 800], [375, 844], [390, 844], [520, 900], [521, 900], [844, 390], [1280, 900]]) {
+  for (const [width, height] of [[320, 844], [280, 844], [320, 568], [350, 844], [360, 800], [375, 844], [390, 844], [520, 900], [521, 900], [844, 390], [1000, 768], [1280, 900], [1920, 1080]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
     const violation = await evaluate(`(() => {
       const app = document.querySelector('#app');
@@ -369,7 +423,7 @@ try {
   await call('Network.setBlockedURLs', { urls: [] })
   await call('Network.setCacheDisabled', { cacheDisabled: false })
   await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
-  console.log('PASS: both bulls fit all five championship stages at pull and animation extremes across eleven screen sizes')
+  console.log('PASS: both bulls fit all five championship stages at pull and animation extremes across thirteen screen sizes')
   console.log('PASS: championship scenes follow stage selection, replay selection and restored progress')
   console.log('PASS: unavailable background retains the location palette and playable round controls')
 
@@ -490,7 +544,7 @@ try {
   await assertFear(0, 0)
   await until(async () => (await state()).phase === 'listen', 'countdown to play')
   await assertFear(2 / 3, 2 / 3)
-  for (const [width, height] of [[320, 568], [375, 667]]) {
+  for (const [width, height] of [[1280, 900], [1000, 768], [320, 568], [375, 667]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
     const layout = await evaluate(`(() => {
       const button = document.querySelector('#go').getBoundingClientRect();
@@ -628,6 +682,7 @@ try {
   await loaded(url)
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).hidden, 'microphone mode hides fallback control')
+  assert.equal((await state()).privacy, '', 'working microphone needs no routine status footer')
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'live')`), true)
   assert.deepEqual(await evaluate(`window.__captureConstraints.audio`), { echoCancellation: true, noiseSuppression: false, autoGainControl: false })
   const settings = await evaluate(`window.__micTracks[0].getSettings()`);
@@ -648,7 +703,7 @@ try {
   assert.deepEqual(reference, { connected: ['connected', 'connected'], servers: [[], []], playing: true, received: true, noMic: true, protected: 'true' })
   await until(async () => (await state()).phase === 'done', 'microphone round finishes')
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
-  assert.equal((await state()).privacy, 'Раунд окончен. Микрофон выключен.')
+  assert.equal((await state()).privacy, '', 'result should not repeat the round-ended message')
   await until(async () => !(await state()).hidden && (await state()).button === 'Ещё раунд ↗', 'microphone replay')
   console.log('PASS: real Chrome fake microphone opens, fallback hides, tracks close, replay returns')
   const unavailableReference = await call('Page.addScriptToEvaluateOnNewDocument', { source: `window.RTCPeerConnection = undefined;` })
@@ -657,6 +712,7 @@ try {
   await until(async () => (await state()).phase === 'hush', 'missing WebRTC keeps round playable')
   assert.equal(await evaluate(`document.querySelector('#app').dataset.echoCancellation`), 'false')
   assert.match((await state()).privacy, /наушниках/)
+  assert.ok(await evaluate(`document.querySelector('#privacy').getBoundingClientRect().height`) > 0, 'headphones advice must stay visible')
   await evaluate(`document.querySelector('.mode-nav [data-mode="championship"]').click()`)
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended') && !document.querySelector('audio[data-echo-reference]')`), true)
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: unavailableReference.identifier })
@@ -737,6 +793,7 @@ try {
   await campaignLayout(390, 844, 'championship-preview')
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).phase === 'listen', 'championship begins')
+  await campaignLayout(1280, 900, 'championship-playing-desktop')
   await campaignLayout(320, 568, 'championship-playing-small')
   await until(() => evaluate(`document.querySelector('#bull-breath-label').textContent.startsWith('Финиш через')`), 'last inhale announces finish rather than another moo')
   await until(async () => (await state()).phase === 'done', 'championship loss')
