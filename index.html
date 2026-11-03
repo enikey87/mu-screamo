@@ -36,6 +36,12 @@
       <div class="arena" aria-label="Ты против Бынича">
         <span class="arena__ring" aria-hidden="true"></span>
         <span class="versus" aria-hidden="true">VS</span>
+        <div class="coin-toss" id="coin-toss" hidden aria-hidden="true">
+          <div class="coin__spin">
+            <span class="coin__face coin__face--you">Ты</span>
+            <span class="coin__face coin__face--bull">Бынич</span>
+          </div>
+        </div>
         <div class="fighter fighter--you" id="fighter-you">
           <div class="fighter__body">
             <div class="bull" id="you-bull">
@@ -57,9 +63,12 @@
               <img class="bull__face bull__face--pleased" src="./art/bull-pleased.webp" alt="" />
               <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
             </div>
-            <span class="breath-cue" aria-hidden="true">
-              <span>вдох</span>
-              <svg viewBox="0 0 80 50" fill="none">
+            <span class="breath-cue" id="breath-cue">
+              <span class="breath-cue__timer">
+                <span id="bull-breath-label"></span>
+                <span class="breath-cue__track" id="bull-breath-meter" role="progressbar" aria-label="Вдох Бынича" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="bull-breath-fill"></span></span>
+              </span>
+              <svg viewBox="0 0 80 50" fill="none" aria-hidden="true">
                 <g class="breath-cue__flow"><path d="M3 8C27 2 35 20 66 16M3 25H72M3 42C27 48 35 30 66 34" /></g>
                 <path d="M62 11L69 16L62 20M67 20L74 25L67 30M62 30L69 34L62 39" />
               </svg>

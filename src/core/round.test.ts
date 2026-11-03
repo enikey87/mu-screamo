@@ -371,3 +371,22 @@ describe('late championship knockout threat', () => {
     expect(view.elapsed).toBeLessThan(ROUND_MS)
   })
 })
+
+describe('remaining bull inhale time', () => {
+  const segments: Segment[] = [{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 1200 }, { kind: 'voice', ms: 800 }, { kind: 'inhale', ms: 5000 }]
+
+  it.each([[0, null], [2399, null], [2400, null], [3399, null], [3400, 1200], [4000, 600], [4599, 1], [4600, null], [5400, 5000], [10399, 1], [10400, null]] as const)('reports the real remaining window at %i ms', (t, expected) => {
+    const round = createRound(segments)
+    walk(round, 0, Math.floor(t / 100) * 100, {})
+    const view = push(round, { ...room, t })
+    expect(view.inhaleRemaining).toBe(expected)
+  })
+
+  it('has no pending inhale after knockout or for an empty schedule', () => {
+    const round = ready([{ kind: 'inhale', ms: 8000 }])
+    walk(round, 500, 2400, {})
+    round.pull = KO_PULL_MS - 10
+    expect(push(round, { ...room, t: 2500, hold: true }).inhaleRemaining).toBeNull()
+    expect(push(createRound([]), { ...room, t: 3000 }).inhaleRemaining).toBeNull()
+  })
+})

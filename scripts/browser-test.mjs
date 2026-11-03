@@ -103,9 +103,26 @@ async function assertAdvantage(kind, label) {
 
 async function checkInhale(reduced = false) {
   await until(() => evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling') && Number(document.querySelector('#app').style.getPropertyValue('--inhale')) > 0.05 && Number(document.querySelector('#app').style.getPropertyValue('--inhale')) < 0.45`), 'visible inhale starts with the breathing window')
+  const progress = await evaluate(`Number(document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow'))`)
+  assert.ok(progress > 0 && progress < 40)
+  assert.match(await evaluate(`document.querySelector('#bull-breath-label').textContent`), /^(До «му»|Финиш через) [0-9]+,[0-9] с$/)
+  assert.equal(await evaluate(`document.querySelector('#bull-breath-meter').getAttribute('role')`), 'progressbar')
+  const visible = await evaluate(`({ fill: new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a, percent: Number(document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow')) })`)
+  const fill = visible.fill
+  assert.ok(Math.abs(fill - visible.percent / 100) < .011, `visible fill must match the reported percentage: ${JSON.stringify(visible)}`)
+  const clear = await evaluate(`(() => {
+    const label = document.querySelector('#bull-breath-label'), badge = label.parentElement.getBoundingClientRect();
+    const tagline = document.querySelector('.tagline'), style = getComputedStyle(tagline), text = tagline.getBoundingClientRect();
+    const poster = document.querySelector('#app').getBoundingClientRect();
+    return label.scrollWidth <= label.clientWidth && badge.left >= poster.left && badge.right <= poster.right &&
+      (style.display === 'none' || style.visibility === 'hidden' || text.bottom <= badge.top || text.top >= badge.bottom || text.right <= badge.left || text.left >= badge.right);
+  })()`)
+  assert.equal(clear, true, 'breath timer must fit and stay clear of other text')
   const first = await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`)
   await pause(100)
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), true)
+  assert.ok(await evaluate(`Number(document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow'))`) > progress, 'inhale progress must keep filling')
+  assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a`) > fill, 'rendered bar must keep filling')
   assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), first, 'bull expands during its inhale')
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
   assert.equal(await evaluate(`document.querySelector('#bull-bull').classList.contains('is-fierce')`), false, 'mouth closes on inhale')
@@ -114,6 +131,9 @@ async function checkInhale(reduced = false) {
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), 'none')
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('#fighter-bull .fighter__body')).animationName`), 'none')
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
+    const reducedFill = await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a`)
+    await pause(100)
+    assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-breath-fill')).transform).a`) > reducedFill, 'reduced motion must retain a functional progress indicator')
     await call('Emulation.setEmulatedMedia', { features: [] })
   }
 }
@@ -180,6 +200,7 @@ try {
   await call('Page.enable')
   await call('Runtime.enable')
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    window.__coinValue = .75; Math.random = () => window.__coinValue;
     window.__echoPeers = []; window.__gameTracks = [];
     const NativePeer = window.RTCPeerConnection;
     window.RTCPeerConnection = new Proxy(NativePeer, { construct(Target, args) {
@@ -196,6 +217,51 @@ try {
       return new Promise((_, reject) => { window.__denyMic = () => reject(new DOMException('Denied', 'NotAllowedError')); });
     };
   ` })
+  for (const first of ['you', 'bull']) {
+    await loaded(url)
+    await evaluate(`window.__coinValue = ${first === 'you' ? .25 : .75}; document.querySelector('#go').click()`)
+    await until(async () => (await state()).phase === 'toss', 'coin toss before countdown')
+    assert.equal(await evaluate(`document.querySelector('#coin-toss').hidden`), false)
+    assert.equal(await evaluate(`document.querySelector('#scoreboard').hidden`), true)
+    assert.equal((await state()).meter, 0)
+    const before = await evaluate(`getComputedStyle(document.querySelector('.coin__spin')).transform`)
+    await pause(100)
+    assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('.coin__spin')).transform`), before, 'coin must actually turn before revealing its side')
+    await until(() => evaluate(`document.querySelector('#coin-toss').dataset.settled === 'true'`), 'coin result settles')
+    assert.equal(await evaluate(`document.querySelector('#app').dataset.starter`), first)
+    assert.equal((await state()).title, first === 'you' ? 'Первым мычишь ты!' : 'Первым мычит Бынич!')
+    assert.ok(Math.abs(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('.coin__spin')).transform).m11`) - (first === 'you' ? 1 : -1)) < .001, 'the visible coin face must match the announced starter')
+    for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+      const fits = await evaluate(`(() => { const coin = document.querySelector('#coin-toss').getBoundingClientRect(); const app = document.querySelector('#app').getBoundingClientRect(); const title = document.querySelector('#callout'); return coin.left >= app.left && coin.right <= app.right && coin.top >= app.top && coin.bottom <= app.bottom && title.scrollWidth <= title.clientWidth; })()`)
+      assert.equal(fits, true, 'coin and first-turn announcement fit small screens')
+    }
+    await screenshot('coin-' + first)
+    await evaluate(`window.__denyMic()`)
+    await until(async () => (await state()).phase === 'hush', 'countdown follows settled coin')
+    assert.equal(await evaluate(`document.querySelector('#coin-toss').hidden`), true)
+    assert.match(await evaluate(`document.querySelector('#hint').textContent`), first === 'you' ? /Первым мычишь ты/ : /Первым мычит Бынич/)
+    await until(async () => (await state()).phase === 'listen', 'announced first turn begins')
+    assert.equal((await state()).breath, first === 'you' ? 'inhale' : 'voice')
+    assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-hot')`), first === 'bull')
+    if (first === 'you') {
+      await checkInhale()
+      await until(async () => (await state()).breath === 'voice', 'bull begins after opening inhale')
+      assert.equal(await evaluate(`document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow')`), '0')
+    }
+  }
+  await loaded(url)
+  await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(async () => (await state()).phase === 'toss', 'static coin with reduced motion')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.coin__spin')).animationName`), 'none')
+  await evaluate(`document.querySelector('.mode-nav [data-mode="championship"]').click(); window.__denyMic()`)
+  await pause(1900)
+  assert.equal((await state()).phase, undefined)
+  assert.equal(await evaluate(`document.querySelector('#coin-toss').hidden`), true)
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.starter`), undefined)
+  await call('Emulation.setEmulatedMedia', { features: [] })
+  console.log('PASS: both coin outcomes match the first live breath; reduced motion and cancelled tosses reset safely')
   const unlocked = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
     localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 5 }));
   ` })
@@ -412,7 +478,7 @@ try {
 
   await call('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 1, mobile: false })
   await evaluate(`document.querySelector('#go').click()`)
-  assert.equal((await state()).button, 'Включаем микрофон…')
+  assert.equal((await state()).button, 'Готовимся к бою…')
   assert.equal((await state()).disabled, true)
   await evaluate(`window.__denyMic()`)
   await until(async () => (await state()).button === 'Зажми и тяни', 'fallback control')
@@ -451,6 +517,7 @@ try {
   await assertAdvantage('you', (await state()).finish === 'knockout' ? 'Ты победил нокаутом' : 'Ты победил')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await assertFear(0, 0)
+  assert.equal(await evaluate(`document.querySelector('#bull-breath-meter').getAttribute('aria-valuenow')`), '0')
   assert.equal(await fearDisplacement('bull'), null)
   await screenshot('win')
   console.log('PASS: permission pending → denied → countdown → hold → win → replay')
@@ -671,6 +738,7 @@ try {
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).phase === 'listen', 'championship begins')
   await campaignLayout(320, 568, 'championship-playing-small')
+  await until(() => evaluate(`document.querySelector('#bull-breath-label').textContent.startsWith('Финиш через')`), 'last inhale announces finish rather than another moo')
   await until(async () => (await state()).phase === 'done', 'championship loss')
   await until(async () => (await state()).button === 'Попробовать ещё ↗', 'retry lost stage')
   assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 1)
@@ -680,8 +748,9 @@ try {
   console.log('PASS: campaign loss retries the same encounter without unlocking anything')
   await assertScene(...stageScenes[0])
 
-  async function winEncounter(key = '') {
+  async function winEncounter(key = '', first = 'bull') {
     await evaluate(`(() => {
+      window.__coinValue = ${first === 'you' ? .25 : .75};
       document.querySelector('#go').click();
       let held = false;
       const timer = setInterval(() => {
@@ -718,7 +787,7 @@ try {
       assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).filter`), 'none')
     }
     await screenshot(`championship-stage-${stage + 1}`)
-    await winEncounter(stage === 0 ? ' ' : stage === 1 ? 'Enter' : '')
+    await winEncounter(stage === 0 ? ' ' : stage === 1 ? 'Enter' : '', stage % 2 === 1 ? 'you' : 'bull')
     await assertScene(...stageScenes[stage])
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), stage + 1)
     assert.equal(await evaluate(`document.querySelectorAll('.stage-step.is-cleared').length`), stage + 1)

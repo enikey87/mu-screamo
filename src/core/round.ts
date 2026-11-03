@@ -52,6 +52,7 @@ export interface View {
   air: number | null
   exhausted: boolean
   inhale: number | null
+  inhaleRemaining: number | null
 }
 
 export interface Round {
@@ -184,6 +185,7 @@ function viewOf(round: Round, t: number): View {
   const yours = tug > 0.08
   const his = tug < -0.08
   const recovering = phase === 'listen' && round.exhausted
+  const inhale = phase === 'listen' ? inhaleAt(round.segments, t - LISTEN_START) : null
   return {
     phase,
     finish: round.finish,
@@ -203,15 +205,17 @@ function viewOf(round: Round, t: number): View {
     tug,
     air: round.rules ? clamp(round.airMs / round.rules.airMs, 0, 1) : null,
     exhausted: round.exhausted,
-    inhale: phase === 'listen' && breath === 'inhale' ? inhaleProgress(round.segments, t - LISTEN_START) : null,
+    inhale: inhale?.progress ?? null,
+    inhaleRemaining: inhale?.remaining ?? null,
     elapsed: Math.min(Math.max(t, 0), ROUND_MS),
   }
 }
 
-function inhaleProgress(segments: Segment[], t: number): number | null {
+function inhaleAt(segments: Segment[], t: number): { progress: number; remaining: number } | null {
   let start = 0
   for (const segment of segments) {
-    if (t < start + segment.ms) return segment.kind === 'inhale' ? clamp((t - start) / segment.ms, 0, 1) : null
+    if (t < start + segment.ms) return segment.kind === 'inhale'
+      ? { progress: clamp((t - start) / segment.ms, 0, 1), remaining: start + segment.ms - t } : null
     start += segment.ms
   }
   return null
