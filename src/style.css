@@ -396,7 +396,7 @@ body {
 .app[data-mode='championship'] .callout { margin-top: 16px; min-height: 1.85em; font-size: clamp(36px, 11vw, 48px); }
 .app[data-mode='championship'] .callout.is-count { font-size: 80px; min-height: 90px; }
 .app[data-mode='championship'] .tagline { min-height: 2.8em; margin-top: 10px; font-size: 14px; line-height: 1.4; text-wrap: pretty; }
-.app[data-mode='championship'] .arena { min-height: 175px; }
+.app[data-mode='championship'] .arena { min-height: 175px; padding-inline: 20px; }
 .app[data-mode='championship'] .fighter__body { width: clamp(100px, 36vw, 180px); max-width: 24svh; }
 .app[data-mode='championship'] .fighter--bull:not(.is-hot) .fighter__body { animation-duration: calc(3.4s - var(--fury, 0) * .35s); }
 .app[data-mode='championship'] .fighter--bull.is-hot .fighter__body { animation-duration: calc(.32s - var(--fury, 0) * .025s); }

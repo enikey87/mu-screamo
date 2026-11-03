@@ -137,6 +137,60 @@ try {
       return new Promise((_, reject) => { window.__denyMic = () => reject(new DOMException('Denied', 'NotAllowedError')); });
     };
   ` })
+  const unlocked = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 5 }));
+  ` })
+  await loaded(`${url}#championship`)
+  await evaluate(`document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '* { transition: none !important; }' }))`)
+  for (const [width, height] of [[320, 844], [280, 844], [320, 568], [350, 844], [360, 800], [375, 844], [390, 844], [520, 900], [521, 900], [844, 390], [1280, 900]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    const violation = await evaluate(`(() => {
+      const app = document.querySelector('#app');
+      const steps = [...document.querySelectorAll('.stage-step')];
+      if (steps.length !== 5 || steps.some(step => step.disabled)) return { error: 'all five encounters must be available' };
+      for (const [stage, step] of steps.entries()) {
+        step.click();
+        const fighter = document.querySelector('#fighter-bull');
+        const bull = document.querySelector('#bull-bull');
+        const you = document.querySelector('#fighter-you');
+        for (const pose of ['ready', 'voice', 'inhale']) {
+          fighter.classList.toggle('is-hot', pose === 'voice');
+          fighter.classList.toggle('is-inhaling', pose === 'inhale');
+          bull.classList.toggle('is-fierce', pose === 'voice');
+          you.classList.toggle('is-hot', pose !== 'ready');
+          app.style.setProperty('--inhale', pose === 'inhale' ? '1' : '0');
+          for (const pull of [-0.99, 0, 0.99]) {
+            app.style.setProperty('--tug', String(pull));
+            for (const progress of [0, 0.32, 0.68]) {
+              for (const body of document.querySelectorAll('.fighter__body')) {
+                const duration = parseFloat(getComputedStyle(body).animationDuration) * 1000;
+                for (const animation of body.getAnimations()) {
+                  animation.pause();
+                  animation.currentTime = progress * duration;
+                }
+              }
+              const poster = app.getBoundingClientRect();
+              for (const art of [stage === 0 ? bull : bull.querySelector('.bull__championship'), document.querySelector('#you-bull')]) {
+                const bounds = art.getBoundingClientRect();
+                if (bounds.width <= 0 || bounds.left < poster.left || bounds.right > poster.right) {
+                  return { stage, pose, pull, progress, art: art.className,
+                    left: bounds.left, right: bounds.right, posterLeft: poster.left, posterRight: poster.right };
+                }
+              }
+            }
+          }
+        }
+      }
+      return null;
+    })()`)
+    if (violation || width === 320 || width === 390 || width === 1280) await screenshot(`championship-bounds-${width}-${height}`)
+    assert.equal(violation, null, `championship art clipped at ${width}×${height}: ${JSON.stringify(violation)}`)
+    assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), 'championship must not scroll horizontally')
+  }
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: unlocked.identifier })
+  await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
+  console.log('PASS: both bulls fit all five championship stages at pull and animation extremes across eleven screen sizes')
+
   await loaded(url)
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#scoreboard').hidden`), true)
