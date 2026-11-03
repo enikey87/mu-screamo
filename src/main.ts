@@ -2,6 +2,7 @@ import { analyzeFrame } from './core/analyze'
 import { dailyBull } from './core/daily'
 import { createRound, push, type Round, type View } from './core/round'
 import { HUSH_MS, INVITE_MS, ROUND_MS } from './core/timing'
+import { playCountdown } from './audio/count'
 import { openMic, type Mic } from './audio/mic'
 import { playBull } from './audio/voice'
 import './style.css'
@@ -26,6 +27,7 @@ const hint = required<HTMLElement>('#hint')
 let audio: AudioContext | null = null
 let mic: Mic | null = null
 let stopVoice: (() => void) | null = null
+let stopCount: (() => void) | null = null
 let frame = 0
 let bout = 0
 let running = false
@@ -83,6 +85,7 @@ async function start(): Promise<void> {
   dateLabel.textContent = `${bull.label} · дневной бык`
   round = createRound(bull.segments)
   origin = ctx.currentTime
+  stopCount = playCountdown(ctx, origin)
   stopVoice = playBull(ctx, bull, origin + (HUSH_MS + INVITE_MS) / 1000)
   go.hidden = mic !== null
   go.disabled = false
@@ -172,4 +175,6 @@ function release(): void {
   mic = null
   stopVoice?.()
   stopVoice = null
+  stopCount?.()
+  stopCount = null
 }
