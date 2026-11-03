@@ -60,6 +60,31 @@ async function loaded(url) {
   await until(() => evaluate(`[...document.images].length === 8 && [...document.images].every(i => i.complete && i.naturalWidth > 0)`), 'all bull images loaded')
 }
 
+const stageScenes = [['fence', 'У изгороди'], ['fence', 'У изгороди'], ['yard', 'Во дворе'], ['yard', 'Во дворе'], ['evening', 'Вечерний луг']]
+
+async function assertScene(scene, label) {
+  const view = await evaluate(`(() => {
+    const scenery = getComputedStyle(document.querySelector('.arena'), '::before');
+    return { scene: document.querySelector('#app').dataset.scene,
+      edition: document.querySelector('#edition-label').textContent,
+      image: scenery.backgroundImage, content: scenery.content, opacity: Number(scenery.opacity),
+      pointerEvents: scenery.pointerEvents };
+  })()`)
+  assert.equal(view.scene, scene)
+  assert.ok(view.edition.endsWith(label), `location label must name ${label}: ${view.edition}`)
+  assert.ok(view.image.includes(`arena-${scene}.webp`), `visible background must match ${scene}: ${view.image}`)
+  assert.notEqual(view.content, 'none')
+  assert.ok(view.opacity > 0)
+  assert.equal(view.pointerEvents, 'none', 'scenery must not intercept game controls')
+  const source = view.image.match(/url\(["']?([^"')]+)["']?\)/)?.[1]
+  assert.ok(source, 'scene must reference an image')
+  const size = await evaluate(`(async () => {
+    const image = new Image(); image.src = ${JSON.stringify(source)};
+    await image.decode(); return [image.naturalWidth, image.naturalHeight];
+  })()`)
+  assert.ok(size[0] >= 600 && size[1] >= 400, `scene asset must decode at usable resolution: ${size}`)
+}
+
 async function assertAdvantage(kind, label) {
   const colors = { even: 'rgb(135, 103, 44)', you: 'rgb(25, 115, 74)', bull: 'rgb(182, 59, 42)' }
   const value = await evaluate(`(() => {
@@ -141,6 +166,12 @@ try {
     localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 5 }));
   ` })
   await loaded(`${url}#championship`)
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
+  for (const stage of [0, 1, 2, 3, 4, 2, 0, 4]) {
+    await evaluate(`document.querySelector('.stage-step[data-stage="${stage}"]').click()`)
+    await assertScene(...stageScenes[stage])
+    if ([0, 2, 4].includes(stage)) await screenshot(`location-${stageScenes[stage][0]}`)
+  }
   await evaluate(`document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '* { transition: none !important; }' }))`)
   for (const [width, height] of [[320, 844], [280, 844], [320, 568], [350, 844], [360, 800], [375, 844], [390, 844], [520, 900], [521, 900], [844, 390], [1280, 900]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
@@ -188,10 +219,34 @@ try {
     assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), 'championship must not scroll horizontally')
   }
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: unlocked.identifier })
+  for (const cleared of [0, 2, 4]) {
+    await evaluate(`localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: ${cleared} }))`)
+    await loaded(`${url}#championship`)
+    await assertScene(...stageScenes[cleared])
+  }
+  await call('Network.enable')
+  await call('Network.setCacheDisabled', { cacheDisabled: true })
+  await call('Network.setBlockedURLs', { urls: ['*arena-evening.webp*'] })
+  await loaded(`${url}#championship`)
+  assert.equal(await evaluate(`fetch(new URL('art/arena-evening.webp', location.href)).then(r => r.ok, () => false)`), false)
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), 'evening')
+  assert.match(await evaluate(`getComputedStyle(document.querySelector('#app')).backgroundImage`), /linear-gradient/)
+  await evaluate(`document.querySelector('#go').click(); window.__denyMic()`)
+  await until(async () => (await state()).phase === 'hush', 'round starts with unavailable scenery')
+  assert.equal((await state()).disabled, false)
+  await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
+  await call('Network.setBlockedURLs', { urls: [] })
+  await call('Network.setCacheDisabled', { cacheDisabled: false })
   await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
   console.log('PASS: both bulls fit all five championship stages at pull and animation extremes across eleven screen sizes')
+  console.log('PASS: championship scenes follow stage selection, replay selection and restored progress')
+  console.log('PASS: unavailable background retains the location palette and playable round controls')
 
   await loaded(url)
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#scoreboard').hidden`), true)
   assert.equal(await evaluate(`
@@ -399,6 +454,7 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 1)
   assert.equal(await evaluate(`localStorage.getItem('bynich.championship.v1')`), null)
   console.log('PASS: campaign loss retries the same encounter without unlocking anything')
+  await assertScene(...stageScenes[0])
 
   async function winEncounter(key = '') {
     await evaluate(`(() => {
@@ -429,6 +485,7 @@ try {
     if (stage === 1) await loaded(`${url}#championship`)
     else if (stage > 1) await evaluate(`document.querySelector('#go').click()`)
     assert.equal(await evaluate(`document.querySelector('#app').dataset.fury`), String(stage))
+    await assertScene(...stageScenes[stage])
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
     if (stage > 0) {
       assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).display`), 'block')
@@ -438,6 +495,7 @@ try {
     }
     await screenshot(`championship-stage-${stage + 1}`)
     await winEncounter(stage === 0 ? ' ' : stage === 1 ? 'Enter' : '')
+    await assertScene(...stageScenes[stage])
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), stage + 1)
     assert.equal(await evaluate(`document.querySelectorAll('.stage-step.is-cleared').length`), stage + 1)
     if (stage < 4) assert.equal((await state()).button, 'Следующая встреча ↗')
@@ -464,6 +522,8 @@ try {
   await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#stage-path').hidden && document.querySelector('#air').hidden`), true)
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
   console.log('PASS: campaign completion, replay without losing unlocks, and return to daily duel')
 
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `

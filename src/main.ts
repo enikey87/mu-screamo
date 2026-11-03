@@ -113,10 +113,11 @@ function preview(): void {
   history.replaceState(null, '', url)
   if (mode === 'championship') {
     const stage = championshipStage(stageIndex)
+    app.dataset.scene = stage.scene.id
     app.dataset.fury = String(stage.fury)
     app.style.setProperty('--fury', String(stage.fury))
     app.style.setProperty('--bull-column', `${(stage.fury - 1) * 100 / 3}%`)
-    editionLabel.textContent = `Встреча ${stageIndex + 1} / ${STAGES.length} · ${stage.title}`
+    editionLabel.textContent = `Встреча ${stageIndex + 1} / ${STAGES.length} · ${stage.scene.label}`
     stageMood.textContent = stage.mood
     bullName.textContent = `Бынич · ${stageIndex + 1}/5`
     callout.textContent = cleared === STAGES.length && stageIndex === STAGES.length - 1 ? 'Реванш чемпиона.' : `${stage.title}.`
@@ -127,6 +128,7 @@ function preview(): void {
     showPath()
   } else {
     delete app.dataset.fury
+    delete app.dataset.scene
     app.style.removeProperty('--fury')
     editionLabel.textContent = 'Дуэль дня'
     bullName.textContent = 'Бынич'

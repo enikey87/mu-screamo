@@ -3,6 +3,7 @@ import type { RoundRules } from './round'
 
 export interface ChampionshipStage {
   title: string
+  scene: { id: 'fence' | 'yard' | 'evening'; label: string }
   mood: string
   intro: string
   fury: number
@@ -10,21 +11,27 @@ export interface ChampionshipStage {
   rules: RoundRules
 }
 
-function encounter(title: string, mood: string, intro: string, fury: number, pitch: number, airMs: number, bullForce: number, durations: number[]): ChampionshipStage {
+const SCENES = {
+  fence: { id: 'fence', label: 'У изгороди' },
+  yard: { id: 'yard', label: 'Во дворе' },
+  evening: { id: 'evening', label: 'Вечерний луг' },
+} as const
+
+function encounter(title: string, scene: ChampionshipStage['scene'], mood: string, intro: string, fury: number, pitch: number, airMs: number, bullForce: number, durations: number[]): ChampionshipStage {
   const segments: Segment[] = durations.map((ms, index) => ({ kind: index % 2 === 0 ? 'voice' : 'inhale', ms }))
   return {
-    title, mood, intro, fury,
+    title, scene, mood, intro, fury,
     bull: { dateKey: `championship-${fury}`, label: title, pitch, segments },
     rules: { airMs, recoveryRate: 1.5, recoverAt: 0.4, bullForce },
   }
 }
 
 export const STAGES: readonly ChampionshipStage[] = [
-  encounter('Разминка', 'Спросонья', '«Ты меня ради этого разбудил? Ладно, мычи».', 0, 125, 2600, 0.6, [400, 1800, 600, 1800, 600, 2800]),
-  encounter('Упрямство', 'Собрался', '«Это была разминка. Теперь я готов». Лови ровный ритм.', 1, 118, 2400, 0.7, [800, 1200, 800, 1200, 800, 1200, 800, 1200]),
-  encounter('Вызов', 'Сердится', '«Думаешь, разгадал меня?» Длина вдохов теперь разная.', 2, 110, 2300, 0.78, [1000, 1500, 1100, 1000, 1200, 2200]),
-  encounter('Ярость', 'Взбешён', '«Всё. Хватит поддавков». Береги воздух для коротких пауз.', 3, 102, 2100, 0.85, [1000, 1000, 600, 1000, 1100, 600, 1300, 1400]),
-  encounter('Финал', 'Разъярён', '«Луг. Пока ещё. Мой». В середине боя Бынич ускорится.', 4, 94, 1900, 0.9, [1600, 1400, 1200, 1200, 500, 500, 700, 900]),
+  encounter('Разминка', SCENES.fence, 'Спросонья', '«Ты меня ради этого разбудил? Ладно, мычи».', 0, 125, 2600, 0.6, [400, 1800, 600, 1800, 600, 2800]),
+  encounter('Упрямство', SCENES.fence, 'Собрался', '«Это была разминка. Теперь я готов». Лови ровный ритм.', 1, 118, 2400, 0.7, [800, 1200, 800, 1200, 800, 1200, 800, 1200]),
+  encounter('Вызов', SCENES.yard, 'Сердится', '«Думаешь, разгадал меня?» Длина вдохов теперь разная.', 2, 110, 2300, 0.78, [1000, 1500, 1100, 1000, 1200, 2200]),
+  encounter('Ярость', SCENES.yard, 'Взбешён', '«Всё. Хватит поддавков». Береги воздух для коротких пауз.', 3, 102, 2100, 0.85, [1000, 1000, 600, 1000, 1100, 600, 1300, 1400]),
+  encounter('Финал', SCENES.evening, 'Разъярён', '«Луг. Пока ещё. Мой». В середине боя Бынич ускорится.', 4, 94, 1900, 0.9, [1600, 1400, 1200, 1200, 500, 500, 700, 900]),
 ]
 
 export function championshipStage(index: number): ChampionshipStage {

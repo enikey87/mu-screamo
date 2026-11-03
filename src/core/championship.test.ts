@@ -6,6 +6,16 @@ function memory(value: string | null = null) {
 }
 
 describe('meadow championship', () => {
+  it('moves from the fence through the yard to the evening meadow', () => {
+    expect(STAGES.map(stage => stage.scene)).toEqual([
+      { id: 'fence', label: 'У изгороди' },
+      { id: 'fence', label: 'У изгороди' },
+      { id: 'yard', label: 'Во дворе' },
+      { id: 'yard', label: 'Во дворе' },
+      { id: 'evening', label: 'Вечерний луг' },
+    ])
+  })
+
   it('has five progressively fiercer, complete and distinct encounters', () => {
     expect(STAGES).toHaveLength(5)
     expect(new Set(STAGES.map(stage => JSON.stringify(stage.bull.segments))).size).toBe(5)
