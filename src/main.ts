@@ -12,22 +12,14 @@ function required<T extends Element>(selector: string): T {
   return node
 }
 
-function mountBull(host: HTMLElement): SVGElement {
-  const tpl = required<HTMLTemplateElement>('#bull-tpl')
-  const svg = tpl.content.firstElementChild?.cloneNode(true)
-  if (!(svg instanceof SVGElement)) throw new Error('missing bull')
-  host.append(svg)
-  return svg
-}
-
 const app = required<HTMLElement>('#app')
 const dateLabel = required<HTMLElement>('#date-label')
 const callout = required<HTMLElement>('#callout')
 const clock = required<HTMLElement>('#clock')
 const youFighter = required<HTMLElement>('#fighter-you')
 const bullFighter = required<HTMLElement>('#fighter-bull')
-const youSvg = mountBull(required<HTMLElement>('#you-body'))
-const bullSvg = mountBull(required<HTMLElement>('#bull-body'))
+const youBull = required<HTMLElement>('#you-bull')
+const bullBull = required<HTMLElement>('#bull-bull')
 const go = required<HTMLButtonElement>('#go')
 const hint = required<HTMLElement>('#hint')
 
@@ -139,14 +131,12 @@ function render(view: View): void {
   bullFighter.classList.toggle('is-hot', view.bullHot)
   youFighter.classList.toggle('is-lose', view.phase === 'done' && view.tug < -0.08)
   bullFighter.classList.toggle('is-lose', view.phase === 'done' && view.tug > 0.08)
-  youSvg.classList.toggle('is-fierce', view.youHot)
-  bullSvg.classList.toggle('is-fierce', view.bullHot)
-  youSvg.style.setProperty('--cheeks', view.youHot ? '1' : '0.25')
-  bullSvg.style.setProperty('--cheeks', view.bullHot ? '1' : '0.25')
-  youSvg.classList.toggle('is-pleased', view.phase === 'done' && view.tug > 0.08)
-  bullSvg.classList.toggle('is-pleased', view.phase === 'done' && view.tug < -0.08)
-  youSvg.classList.toggle('is-puzzled', view.phase === 'done' && view.tug < -0.08)
-  bullSvg.classList.toggle('is-puzzled', view.phase === 'done' && view.tug > 0.08)
+  youBull.classList.toggle('is-fierce', view.youHot)
+  bullBull.classList.toggle('is-fierce', view.bullHot)
+  youBull.classList.toggle('is-pleased', view.phase === 'done' && view.tug > 0.08)
+  bullBull.classList.toggle('is-pleased', view.phase === 'done' && view.tug < -0.08)
+  youBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug < -0.08)
+  bullBull.classList.toggle('is-puzzled', view.phase === 'done' && view.tug > 0.08)
   if (callout.textContent !== view.shout) {
     callout.textContent = view.shout
     callout.classList.remove('is-pop')

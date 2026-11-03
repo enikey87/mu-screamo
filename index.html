@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#d7f0ff" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='36' r='22' fill='%23c98a5b'/><ellipse cx='16' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(-30 16 18)'/><ellipse cx='48' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(30 48 18)'/><circle cx='24' cy='34' r='4' fill='%2385c6ec'/><circle cx='40' cy='34' r='4' fill='%2385c6ec'/></svg>" />
   </head>
-  <body>
+  <body style="background-image: url('./art/park.jpg')">
     <main class="app" id="app">
       <div class="clock" aria-hidden="true"><span id="clock"></span></div>
       <p class="eyebrow" id="date-label"></p>
@@ -22,11 +22,25 @@
       </div>
       <div class="arena">
         <div class="fighter fighter--you" id="fighter-you">
-          <div class="fighter__body" id="you-body"></div>
+          <div class="fighter__body">
+            <div class="bull" id="you-bull">
+              <img class="bull__face bull__face--calm" src="./art/bull-calm.webp" alt="" />
+              <img class="bull__face bull__face--fierce" src="./art/bull-fierce.webp" alt="" />
+              <img class="bull__face bull__face--pleased" src="./art/bull-pleased.webp" alt="" />
+              <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
+            </div>
+          </div>
           <span class="fighter__name">Ты</span>
         </div>
         <div class="fighter fighter--bull" id="fighter-bull">
-          <div class="fighter__body" id="bull-body"></div>
+          <div class="fighter__body">
+            <div class="bull" id="bull-bull">
+              <img class="bull__face bull__face--calm" src="./art/bull-calm.webp" alt="" />
+              <img class="bull__face bull__face--fierce" src="./art/bull-fierce.webp" alt="" />
+              <img class="bull__face bull__face--pleased" src="./art/bull-pleased.webp" alt="" />
+              <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
+            </div>
+          </div>
           <span class="fighter__name">Бынич</span>
         </div>
       </div>
@@ -36,68 +50,6 @@
       <p class="privacy">Микрофон включён только на время раунда. Ничего не записывается и не отправляется.</p>
     </main>
 
-    <template id="bull-tpl">
-      <svg class="bull" viewBox="0 0 420 470" role="img">
-        <g class="bull-body">
-          <path d="M320 268 Q 372 280 362 344" fill="none" stroke="#a5714a" stroke-width="8" stroke-linecap="round" />
-          <ellipse cx="361" cy="354" rx="14" ry="19" fill="#6b3e22" transform="rotate(-10 361 354)" />
-          <g fill="#b0763f" stroke="#c4a07a" stroke-width="2.25">
-            <rect x="243" y="350" width="30" height="100" rx="13" />
-            <rect x="283" y="350" width="30" height="100" rx="13" />
-          </g>
-          <g fill="#6b3e22">
-            <rect x="243" y="424" width="30" height="26" rx="9" />
-            <rect x="283" y="424" width="30" height="26" rx="9" />
-          </g>
-          <ellipse cx="212" cy="320" rx="122" ry="98" fill="#c98a5b" stroke="#c4a07a" stroke-width="2.25" />
-          <g fill="#c98a5b" stroke="#c4a07a" stroke-width="2.25">
-            <rect x="137" y="350" width="30" height="100" rx="13" />
-            <rect x="177" y="350" width="30" height="100" rx="13" />
-          </g>
-          <g fill="#6b3e22">
-            <rect x="137" y="424" width="30" height="26" rx="9" />
-            <rect x="177" y="424" width="30" height="26" rx="9" />
-          </g>
-          <rect class="collar" x="126" y="286" width="172" height="26" rx="13" fill="#d9534f" stroke="#c45a52" stroke-width="2" />
-          <circle cx="212" cy="322" r="16" fill="#f7c948" stroke="#e2b84a" stroke-width="2" />
-        </g>
-        <g class="head">
-          <path d="M150 84 Q 126 34 92 22 Q 130 24 154 56 Q 162 70 150 84 Z" fill="#f0e0c4" stroke="#e4d2ad" stroke-width="2" />
-          <path d="M270 84 Q 294 34 328 22 Q 290 24 266 56 Q 258 70 270 84 Z" fill="#f0e0c4" stroke="#e4d2ad" stroke-width="2" />
-          <ellipse cx="212" cy="172" rx="106" ry="114" fill="#c98a5b" stroke="#c4a07a" stroke-width="2.25" />
-          <g class="brows">
-            <path d="M146 138 Q 168 126 190 136" fill="none" stroke="#c4a07a" stroke-width="2.25" stroke-linecap="round" />
-            <path d="M234 136 Q 256 126 278 138" fill="none" stroke="#c4a07a" stroke-width="2.25" stroke-linecap="round" />
-          </g>
-          <g class="eye">
-            <ellipse cx="168" cy="168" rx="21" ry="26" fill="#fff" stroke="#c4a07a" stroke-width="2" />
-            <g class="pupil">
-              <circle cx="168" cy="171" r="13.5" fill="#85c6ec" />
-              <circle cx="168" cy="171" r="9.5" fill="#3b2314" />
-              <circle cx="172" cy="166" r="3" fill="#fff" />
-            </g>
-          </g>
-          <g class="eye">
-            <ellipse cx="256" cy="168" rx="21" ry="26" fill="#fff" stroke="#c4a07a" stroke-width="2" />
-            <g class="pupil">
-              <circle cx="256" cy="171" r="13.5" fill="#85c6ec" />
-              <circle cx="256" cy="171" r="9.5" fill="#3b2314" />
-              <circle cx="260" cy="166" r="3" fill="#fff" />
-            </g>
-          </g>
-          <path class="eye-arc" d="M150 176 Q 168 158 186 176" fill="none" stroke="#3b2314" stroke-width="3.5" stroke-linecap="round" />
-          <path class="eye-arc" d="M238 176 Q 256 158 274 176" fill="none" stroke="#3b2314" stroke-width="3.5" stroke-linecap="round" />
-          <g class="muzzle">
-            <ellipse cx="212" cy="250" rx="70" ry="48" fill="#ecc6a3" stroke="#e0b89a" stroke-width="2" />
-            <ellipse cx="184" cy="238" rx="8" ry="12" fill="#8a5a32" />
-            <ellipse cx="240" cy="238" rx="8" ry="12" fill="#8a5a32" />
-            <ellipse class="mouth-calm" cx="212" cy="270" rx="14" ry="6" fill="#7a4030" />
-            <ellipse class="mouth-fierce" cx="212" cy="276" rx="30" ry="22" fill="#5c241c" />
-            <ellipse class="mouth-fierce" cx="212" cy="284" rx="16" ry="8" fill="#e5837b" />
-          </g>
-        </g>
-      </svg>
-    </template>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

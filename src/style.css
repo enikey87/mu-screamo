@@ -24,10 +24,10 @@ body {
   height: 100svh;
   overflow: hidden;
   overscroll-behavior: none;
-  background:
-    radial-gradient(90% 55% at 50% -8%, #fff8ea 0%, transparent 58%),
-    radial-gradient(70% 42% at 50% 108%, #b7e39a 0%, transparent 62%),
-    linear-gradient(180deg, #c5e8f8 0%, #eef8f2 48%, #d7efc2 100%);
+  background-color: #d7eec4;
+  background-position: center 20%;
+  background-size: cover;
+  background-repeat: no-repeat;
   touch-action: manipulation;
 }
 
@@ -80,6 +80,9 @@ body {
   letter-spacing: -0.07em;
   text-transform: uppercase;
   color: var(--ink);
+  text-shadow:
+    0 2px 0 rgba(255, 252, 248, 0.85),
+    0 10px 18px rgba(36, 28, 22, 0.12);
   transition: color 0.25s ease;
 }
 
@@ -103,7 +106,8 @@ body {
 .privacy {
   margin: 0;
   line-height: 1.35;
-  color: var(--muted);
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 252, 248, 0.85);
 }
 
 .gauge {
@@ -113,21 +117,20 @@ body {
 }
 
 .gauge__track {
-  height: 12px;
-  margin-top: 5px;
+  height: 16px;
+  margin-top: 3px;
+  border: 2px solid #5c3a22;
   border-radius: 99px;
   overflow: hidden;
-  background: rgba(255, 252, 248, 0.55);
-  box-shadow:
-    inset 0 1px 2px rgba(36, 28, 22, 0.12),
-    0 8px 20px rgba(36, 28, 22, 0.05);
+  background: repeating-linear-gradient(90deg, #e07a3a 0 8px, #f6d7a8 8px 14px);
+  box-shadow: 0 6px 14px rgba(36, 28, 22, 0.16);
 }
 
 .gauge__you {
   display: block;
   height: 100%;
   width: calc(50% + var(--tug, 0) * 46%);
-  background: linear-gradient(90deg, #0e7a40, #3dcb73);
+  background: repeating-linear-gradient(90deg, #1c8a46 0 8px, #8ed56a 8px 14px);
   transition: width 160ms var(--spring);
 }
 
@@ -209,8 +212,8 @@ body {
 }
 
 .fighter__body {
-  width: min(190px, 42vw, 34svh);
-  filter: drop-shadow(0 12px 10px rgba(50, 35, 20, 0.12));
+  width: min(210px, 46vw, 36svh);
+  filter: drop-shadow(0 12px 10px rgba(50, 35, 20, 0.18));
 }
 
 .fighter__name {
@@ -251,91 +254,39 @@ body {
 }
 
 .bull {
+  position: relative;
+  display: block;
   width: 100%;
-  height: auto;
-  overflow: visible;
+  aspect-ratio: 3 / 4;
 }
 
 .fighter--you .bull {
   transform: scaleX(-1);
 }
 
-.fighter--you .collar {
-  fill: #12924f;
-  stroke: #0e7340;
-}
-
-.brows {
-  stroke-width: 3.4;
-}
-
-.head,
-.brows,
-.muzzle,
-.mouth-calm,
-.mouth-fierce,
-.pupil,
-.eye-arc {
-  transform-box: fill-box;
-  transform-origin: center;
-  transition:
-    transform 0.2s var(--spring),
-    opacity 0.16s ease;
-}
-
-.mouth-fierce {
+.bull__face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   opacity: 0;
+  pointer-events: none;
 }
 
-.bull.is-fierce .mouth-calm {
-  opacity: 0;
-}
-
-.bull.is-fierce .mouth-fierce {
+.bull__face--calm,
+.bull.is-fierce .bull__face--fierce,
+.bull.is-pleased .bull__face--pleased,
+.bull.is-puzzled .bull__face--puzzled {
   opacity: 1;
 }
 
-.bull.is-fierce .brows {
-  transform: translateY(8px) scaleY(0.8);
-}
-
-.bull.is-fierce .head {
-  animation: nod 0.32s ease-in-out infinite;
-}
-
-.eye {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: blink 4.8s ease-in-out infinite;
-}
-
-.fighter--bull .eye {
-  animation-delay: 0.8s;
-}
-
-.bull.is-fierce .eye,
-.bull.is-pleased .eye {
-  animation: none;
-}
-
-.eye-arc {
+.bull.is-fierce .bull__face--calm,
+.bull.is-pleased .bull__face--calm,
+.bull.is-pleased .bull__face--fierce,
+.bull.is-puzzled .bull__face--calm,
+.bull.is-puzzled .bull__face--fierce {
   opacity: 0;
-}
-
-.bull.is-pleased .pupil {
-  opacity: 0;
-}
-
-.bull.is-pleased .eye-arc {
-  opacity: 1;
-}
-
-.bull.is-puzzled .brows {
-  transform: translateY(6px) rotate(8deg);
-}
-
-.muzzle {
-  transform: scale(calc(0.96 + var(--cheeks, 0.3) * 0.12));
 }
 
 .callout.is-pop {
@@ -404,27 +355,6 @@ body {
   }
   68% {
     transform: translateY(-9px) scale(0.97, 1.07);
-  }
-}
-
-@keyframes nod {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  40% {
-    transform: rotate(-5deg) translateY(2px);
-  }
-}
-
-@keyframes blink {
-  0%,
-  90%,
-  100% {
-    transform: scaleY(1);
-  }
-  94% {
-    transform: scaleY(0.08);
   }
 }
 
