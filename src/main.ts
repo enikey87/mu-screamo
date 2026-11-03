@@ -22,6 +22,7 @@ const stagePath = required<HTMLElement>('#stage-path')
 const stageButtons = [...document.querySelectorAll<HTMLButtonElement>('.stage-step')]
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('.mode-nav button')]
 const callout = required<HTMLElement>('#callout')
+const calloutLabel = required<HTMLElement>('#callout-label')
 const clock = required<HTMLElement>('#clock')
 const youFighter = required<HTMLElement>('#fighter-you')
 const bullFighter = required<HTMLElement>('#fighter-bull')
@@ -41,10 +42,10 @@ const airLabel = required<HTMLElement>('#air-label')
 const championSeal = required<HTMLElement>('#champion-seal')
 const saveNotice = required<HTMLElement>('#save-notice')
 const coin = required<HTMLElement>('#coin-toss')
-const breathCue = required<HTMLElement>('#breath-cue')
-const breathMeter = required<HTMLElement>('#bull-breath-meter')
-const breathFill = required<HTMLElement>('#bull-breath-fill')
-const breathLabel = required<HTMLElement>('#bull-breath-label')
+const playerWindow = required<HTMLElement>('#player-window')
+const playerMeter = required<HTMLElement>('#player-meter')
+const playerFill = required<HTMLElement>('#player-fill')
+const playerTime = required<HTMLElement>('#player-time')
 
 let audio: AudioContext | null = null
 let mic: Mic | null = null
@@ -81,6 +82,7 @@ function showPath(): void {
 function resetArena(): void {
   delete app.dataset.phase
   delete app.dataset.breath
+  delete app.dataset.cue
   delete app.dataset.starter
   delete app.dataset.finish
   delete app.dataset.echoCancellation
@@ -99,11 +101,11 @@ function resetArena(): void {
   scoreboard.hidden = true
   championSeal.hidden = true
   air.hidden = true
-  breathCue.classList.remove('is-ready')
-  breathMeter.setAttribute('aria-valuenow', '0')
-  breathMeter.setAttribute('aria-valuetext', '')
-  breathFill.style.transform = 'scaleX(0)'
-  breathLabel.textContent = ''
+  playerWindow.hidden = true
+  playerMeter.setAttribute('aria-valuenow', '0')
+  playerMeter.setAttribute('aria-valuetext', '')
+  playerFill.style.transform = 'scaleX(0)'
+  playerTime.textContent = ''
 }
 
 function preview(): void {
@@ -130,7 +132,7 @@ function preview(): void {
     app.style.setProperty('--bull-column', `${(stage.fury - 1) * 100 / 3}%`)
     editionLabel.textContent = `Встреча ${stageIndex + 1} / ${STAGES.length} · ${stage.scene.label}`
     bullName.textContent = 'Бынич'
-    callout.textContent = cleared === STAGES.length && stageIndex === STAGES.length - 1 ? 'Реванш чемпиона.' : `${stage.title}.`
+    calloutLabel.textContent = cleared === STAGES.length && stageIndex === STAGES.length - 1 ? 'Реванш чемпиона.' : `${stage.title}.`
     hint.textContent = 'Громче «му» — сильнее тяга. Лови его вдох и береги воздух.'
     go.textContent = 'Выйти на луг ↗'
     showPath()
@@ -139,7 +141,7 @@ function preview(): void {
     delete app.dataset.scene
     app.style.removeProperty('--fury')
     bullName.textContent = 'Бынич'
-    callout.innerHTML = 'Ну что,<br />кто кого?'
+    calloutLabel.innerHTML = 'Ну что,<br />кто кого?'
     hint.innerHTML = 'Громче «му» — сильнее тяга.<br />Тяни на вдохе Бынича. Край шкалы — нокаут.'
     go.innerHTML = 'Принять вызов <span aria-hidden="true">↗</span>'
   }
@@ -255,13 +257,13 @@ function animateCoin(id: number, first: Starter): Promise<void> {
   coin.style.setProperty('--coin-stop', first === 'you' ? '1440deg' : '1620deg')
   void coin.offsetWidth
   coin.hidden = false
-  callout.textContent = 'Бросаем монетку.'
+  calloutLabel.textContent = 'Бросаем монетку.'
   hint.textContent = 'Сейчас решим, кто начнёт.'
   return new Promise(resolve => {
     const reveal = window.setTimeout(() => {
       if (id !== bout) return
       coin.dataset.settled = 'true'
-      callout.textContent = first === 'you' ? 'Первым мычишь ты!' : 'Первым мычит Бынич!'
+      calloutLabel.textContent = first === 'you' ? 'Первым мычишь ты!' : 'Первым мычит Бынич!'
       hint.textContent = first === 'you' ? 'Бынич начнёт со вдоха. Жди сигнала.' : 'Дождись вдоха Бынича — тогда твой выход.'
     }, 900)
     const ready = window.setTimeout(() => {
@@ -303,7 +305,7 @@ function loop(): void {
         saveNotice.hidden = saved
         if (stageIndex === STAGES.length - 1) {
           app.classList.add('is-champion')
-          callout.textContent = 'Чемпион луга!'
+          calloutLabel.textContent = 'Чемпион луга!'
           hint.textContent = 'Бынич уступает титул. Луг за тобой.'
           championSeal.hidden = false
         } else hint.textContent = 'Встреча пройдена. Бынич уже злится — дальше будет жарче.'
@@ -360,24 +362,28 @@ function render(view: View): void {
   bullBull.classList.toggle('is-pleased', view.phase === 'done' && his)
   youBull.classList.toggle('is-puzzled', view.phase === 'done' && his)
   bullBull.classList.toggle('is-puzzled', view.phase === 'done' && yours)
-  callout.classList.toggle('is-count', view.phase === 'hush' || view.phase === 'invite')
-  if (callout.textContent !== view.shout) {
-    callout.textContent = view.shout
+  callout.classList.toggle('is-count', view.phase === 'invite')
+  if (calloutLabel.textContent !== view.shout) {
+    calloutLabel.textContent = view.shout
     callout.classList.remove('is-pop')
-    void callout.offsetWidth
-    callout.classList.add('is-pop')
+    if (view.phase !== 'listen') {
+      void callout.offsetWidth
+      callout.classList.add('is-pop')
+    }
   }
   hint.textContent = view.phase === 'hush' || view.phase === 'invite'
     ? `${starter === 'you' ? 'Первым мычишь ты' : 'Первым мычит Бынич'}. Жди сигнала.` : view.hint
-  const inhale = view.inhale ?? 0
-  breathFill.style.transform = `scaleX(${inhale})`
-  breathMeter.setAttribute('aria-valuenow', String(Math.floor(inhale * 100)))
-  breathCue.classList.toggle('is-ready', inhale >= .8)
-  const remaining = view.inhaleRemaining
+  const cue = view.cue
+  if (cue) app.dataset.cue = cue.kind
+  else delete app.dataset.cue
+  playerWindow.hidden = cue?.kind !== 'moo'
+  const fraction = cue?.fraction ?? 0
+  playerFill.style.transform = `scaleX(${fraction})`
+  playerMeter.setAttribute('aria-valuenow', String(Math.floor(fraction * 100)))
+  const remaining = cue?.remaining ?? null
   const seconds = remaining === null ? '' : (Math.ceil(remaining / 100) / 10).toFixed(1).replace('.', ',')
-  breathLabel.textContent = remaining === null ? ''
-    : `${view.elapsed + remaining >= ROUND_MS ? 'Финиш через' : 'До «му»'} ${seconds} с`
-  breathMeter.setAttribute('aria-valuetext', breathLabel.textContent)
+  playerTime.textContent = remaining === null ? '' : `${seconds} с`
+  playerMeter.setAttribute('aria-valuetext', playerTime.textContent)
   air.hidden = view.air === null
   if (view.air !== null) {
     airFill.style.transform = `scaleX(${view.air})`

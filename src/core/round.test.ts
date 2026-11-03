@@ -29,7 +29,7 @@ describe('push', () => {
     expect(inhaleTug).toBeGreaterThan(0.3)
     expect(overTug).toBeLessThan(0)
     expect(inhaleTug).toBeGreaterThan(overTug)
-    expect(push(inhale, { ...room, t: 4_000, hold: true }).shout).toBe('Тяни му-у-у!')
+    expect(push(inhale, { ...room, t: 4_000, hold: true }).shout).toBe('Держи!')
   })
 
   it('lets a scream during the invite leave the rope where it was', () => {
@@ -80,11 +80,11 @@ describe('push', () => {
 
 describe('championship copy', () => {
   it.each([
-    [0, 'hush', '3'],
-    [799, 'invite', '3'],
-    [800, 'invite', '2'],
-    [1599, 'invite', '2'],
-    [1600, 'invite', '1'],
+    [0, 'hush', 'Тише…'],
+    [1066, 'invite', '3'],
+    [1067, 'invite', '2'],
+    [1733, 'invite', '2'],
+    [1734, 'invite', '1'],
     [2399, 'invite', '1'],
   ])('keeps the countdown at %i ms clear', (t, phase, shout) => {
     const view = push(createRound([{ kind: 'inhale', ms: 8000 }]), { ...room, t })
@@ -97,11 +97,11 @@ describe('championship copy', () => {
     const round = ready([{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 7000 }])
     walk(round, 500, 3300, {})
     const voice = push(round, { ...room, t: 3399 })
-    expect(voice.shout).toBe('Бынич тянет.')
-    expect(voice.hint).toBe('Лови его вдох — тогда твоё мычание сильнее.')
+    expect(voice.shout).toBe('Приготовься…')
+    expect(voice.hint).toBe('Скоро твой выход. Жди сигнала.')
     const inhale = push(round, { ...room, t: 3400, hold: true })
-    expect(inhale.shout).toBe('Тяни му-у-у!')
-    expect(inhale.hint).toBe('Он на вдохе. Твой выход!')
+    expect(inhale.shout).toBe('Держи!')
+    expect(inhale.hint).toBe('Продолжай «му-у-у» до конца полоски.')
   })
 
   it.each([

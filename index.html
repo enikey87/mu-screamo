@@ -26,7 +26,13 @@
           <button class="stage-step" type="button" data-stage="3">4</button>
           <button class="stage-step" type="button" data-stage="4">5</button>
         </nav>
-        <h1 class="callout" id="callout">Ну что,<br />кто кого?</h1>
+        <h1 class="callout" id="callout">
+          <span id="callout-label">Ну что,<br />кто кого?</span>
+          <span class="player-window" id="player-window" hidden>
+            <span id="player-time"></span>
+            <span class="player-window__track" id="player-meter" role="progressbar" aria-label="Осталось мычать" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="player-fill"></span></span>
+          </span>
+        </h1>
       </header>
       <div class="arena" aria-label="Ты против Бынича">
         <div class="coin-toss" id="coin-toss" hidden aria-hidden="true">
@@ -57,10 +63,6 @@
               <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
             </div>
             <span class="breath-cue" id="breath-cue">
-              <span class="breath-cue__timer">
-                <span id="bull-breath-label"></span>
-                <span class="breath-cue__track" id="bull-breath-meter" role="progressbar" aria-label="Вдох Бынича" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="bull-breath-fill"></span></span>
-              </span>
               <svg viewBox="0 0 80 50" fill="none" aria-hidden="true">
                 <g class="breath-cue__flow"><path d="M3 8C27 2 35 20 66 16M3 25H72M3 42C27 48 35 30 66 34" /></g>
                 <path d="M62 11L69 16L62 20M67 20L74 25L67 30M62 30L69 34L62 39" />
