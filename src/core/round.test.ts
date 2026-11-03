@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Segment } from './daily'
+import { breathAt, type Segment } from './daily'
+import { STAGES } from './championship'
 import { createRound, push, type Round, type Sample } from './round'
 import { KO_PULL_MS, ROUND_MS } from './timing'
 
@@ -125,5 +126,105 @@ describe('championship copy', () => {
         ? 'Его вдох — твой шанс. Попробуем ещё?'
         : 'Никто не уступил. Ещё раунд?')
     expect(push(round, { ...room, t: ROUND_MS + 100, hold: true })).toEqual(view)
+  })
+})
+
+
+describe('championship air', () => {
+  function champion(airMs = 1000, segments: Segment[] = [{ kind: 'inhale', ms: 8000 }]): Round {
+    const round = createRound(segments, { airMs, recoveryRate: 2, recoverAt: 0.4, bullForce: 0.8 })
+    walk(round, 0, 2400, {})
+    return round
+  }
+
+  it('keeps daily rounds unlimited and starts championship air full after countdown', () => {
+    expect(push(createRound([{ kind: 'voice', ms: 8000 }]), room).air).toBeNull()
+    const round = champion()
+    expect(push(round, { ...room, t: 2400 }).air).toBe(1)
+    expect(push(round, { ...room, t: 2400 }).exhausted).toBe(false)
+  })
+
+  it('exhausts on continuous input and requires a real pause to recover', () => {
+    const round = champion()
+    walk(round, 2500, 3400, { hold: true })
+    const empty = push(round, { ...room, t: 3400, hold: true })
+    expect(empty.air).toBe(0)
+    expect(empty.exhausted).toBe(true)
+    expect(empty.youHot).toBe(false)
+    walk(round, 3500, 4000, { hold: true })
+    expect(push(round, { ...room, t: 4000, hold: true }).air).toBe(0)
+    const early = push(round, { ...room, t: 4100 })
+    expect(early.air).toBeCloseTo(0.2)
+    expect(early.exhausted).toBe(true)
+    const recovered = push(round, { ...room, t: 4200 })
+    expect(recovered.air).toBeCloseTo(0.4)
+    expect(recovered.exhausted).toBe(false)
+    const resumed = push(round, { ...room, t: 4300, hold: true })
+    expect(resumed.youHot).toBe(true)
+    expect(resumed.air).toBeCloseTo(0.3)
+  })
+
+  it('counts only available air when depletion falls inside a frame', () => {
+    const round = champion(250)
+    walk(round, 2500, 2700, { hold: true })
+    expect(round.pull).toBeCloseTo(308.7)
+    expect(push(round, { ...room, t: 2700, hold: true }).air).toBe(0)
+  })
+
+  it('cannot refill by shouting a non-moo', () => {
+    const round = champion()
+    walk(round, 2500, 3400, { db: -8 })
+    const view = push(round, { ...room, t: 3400, db: -8 })
+    expect(view.air).toBe(0)
+    expect(view.youHot).toBe(false)
+    expect(round.pull).toBeCloseTo(-96)
+    walk(round, 3500, 4000, { db: -8 })
+    expect(push(round, { ...room, t: 4000, db: -8 }).air).toBe(0)
+  })
+
+  it('treats a recognized microphone moo and holding identically', () => {
+    const mic = champion()
+    const button = champion()
+    walk(mic, 2500, 3000, { db: -20, moo: true })
+    walk(button, 2500, 3000, { hold: true })
+    expect(mic.pull).toBeCloseTo(button.pull)
+    expect(push(mic, { ...room, t: 3000, db: -20, moo: true }).air).toBeCloseTo(0.4)
+  })
+
+  it('caps recovery and does not drain air during the countdown or a suspended frame', () => {
+    const round = createRound([{ kind: 'inhale', ms: 8000 }], { airMs: 1000, recoveryRate: 2, recoverAt: 0.4, bullForce: 0.8 })
+    walk(round, 0, 2300, { hold: true })
+    expect(push(round, { ...room, t: 2300, hold: true }).air).toBe(1)
+    expect(push(round, { ...room, t: 3000, hold: true }).air).toBe(1)
+    walk(round, 3100, 3500, {})
+    expect(push(round, { ...room, t: 3500 }).air).toBe(1)
+  })
+
+  it('is independent of frame partitioning through a breath boundary', () => {
+    const results = [10, 25, 100].map(step => {
+      const round = champion(750, [{ kind: 'voice', ms: 425 }, { kind: 'inhale', ms: 7575 }])
+      for (let t = 2400 + step; t <= 4400; t += step) push(round, { ...room, t, hold: true })
+      return { pull: round.pull, air: push(round, { ...room, t: 4400, hold: true }).air }
+    })
+    expect(results[0].air).toBe(0)
+    for (const result of results) {
+      expect(result.pull).toBeCloseTo(results[0].pull, 6)
+      expect(result.air).toBe(0)
+    }
+  })
+
+  it.each(STAGES.map((stage, index) => [index, stage] as const))('stage %i is winnable with a delayed rhythm; later stages defeat continuous input', (index, stage) => {
+    function play(timed: boolean) {
+      const round = createRound(stage.bull.segments, stage.rules)
+      let view = push(round, room)
+      for (let t = 10; t <= ROUND_MS; t += 10) {
+        const hold = t >= 2400 && (!timed || t >= 2550 && breathAt(stage.bull.segments, t - 2550) === 'inhale')
+        view = push(round, { ...room, t, hold })
+        if (view.phase === 'done') break
+      }
+      return view
+    }
+    expect(play(true).tug).toBeGreaterThan(0.08)
+    if (index >= 3) expect(play(false).tug).toBeLessThan(-0.08)
   })
 })

@@ -369,6 +369,40 @@ body {
 }
 
 
+
+.mode-nav { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; margin-bottom: 20px; }
+.mode-nav button { min-height: 34px; border: 1px solid var(--line); border-radius: 0; padding: 7px 4px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.mode-nav button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.mode-nav button:focus-visible, .stage-step:focus-visible { outline: 2px solid var(--him); outline-offset: 3px; }
+.stage-path { position: relative; display: flex; justify-content: space-between; gap: 12px; margin-top: 15px; }
+.stage-path::before { position: absolute; top: 14px; left: 14px; right: 14px; height: 1px; background: var(--line); content: ''; }
+.stage-step { position: relative; display: grid; place-items: center; flex: 0 0 29px; height: 29px; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); color: var(--ink); font: inherit; font-size: 11px; cursor: pointer; }
+.stage-step.is-cleared { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.stage-step[aria-current] { outline: 2px solid var(--him); outline-offset: 2px; }
+.stage-step:disabled { cursor: default; color: #92947d; }
+.stage-step.is-cleared:disabled { color: var(--paper); }
+#stage-mood { color: var(--him); font-weight: 700; }
+.app[data-mode='championship'] .callout { margin-top: 16px; min-height: 1.85em; font-size: clamp(36px, 11vw, 48px); }
+.app[data-mode='championship'] .callout.is-count { font-size: 80px; min-height: 90px; }
+.app[data-mode='championship'] .tagline { min-height: 2.8em; margin-top: 10px; font-size: 14px; line-height: 1.4; text-wrap: pretty; }
+.app[data-mode='championship'] .arena { min-height: 175px; }
+.app[data-mode='championship'] .fighter__body { width: clamp(100px, 36vw, 180px); max-width: 24svh; }
+.app[data-mode='championship'] .fighter--bull:not(.is-hot) .fighter__body { animation-duration: calc(3.4s - var(--fury, 0) * .35s); }
+.app[data-mode='championship'] .fighter--bull.is-hot .fighter__body { animation-duration: calc(.32s - var(--fury, 0) * .025s); }
+.bull__championship { position: absolute; inset: 0; display: none; background-image: url('/art/bull-championship.webp'); background-repeat: no-repeat; background-size: 400% 200%; background-position: var(--bull-column) 0%; transform: scale(calc(1 + var(--fury, 0) * .015)); transform-origin: center bottom; }
+.app[data-mode='championship']:not([data-fury='0']) #bull-bull .bull__face { visibility: hidden; }
+.app[data-mode='championship']:not([data-fury='0']) .bull__championship { display: block; }
+.bull.is-fierce .bull__championship { background-position-y: 100%; }
+.app[data-fury='3'] .arena__ring, .app[data-fury='4'] .arena__ring { border-color: #c93f2480; box-shadow: 0 0 0 8px #c93f2406; }
+.air { flex: 0 0 auto; margin-bottom: 10px; }
+.air__label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 10px; color: var(--muted); }
+.air__track { height: 5px; overflow: hidden; background: var(--line); }
+.air__track > span { display: block; width: 100%; height: 100%; background: var(--ink); transform-origin: left center; transition: transform 80ms linear; }
+.app.is-exhausted .air__track > span { background: var(--him); }
+.app.is-exhausted .air__label { color: var(--him); }
+.champion-seal { position: absolute; z-index: 2; top: 43%; right: 28px; display: grid; place-content: center; width: 94px; height: 94px; border: 3px double var(--him); border-radius: 50%; background: var(--paper); color: var(--him); text-align: center; font-family: Georgia, serif; font-size: 17px; line-height: 1.1; transform: rotate(12deg); }
+.save-notice { margin: 8px 0 0; color: var(--him); font-size: 11px; line-height: 1.4; }
+
 @media (max-width: 520px) {
   body { padding: 0; background: var(--paper); }
   .app {
@@ -406,4 +440,35 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media (max-height: 800px) {
+  .mode-nav { margin-bottom: 12px; }
+  .mode-nav button { min-height: 30px; padding: 5px 4px; font-size: 11px; }
+  .app[data-mode='championship'] .masthead { display: none; }
+  .app[data-mode='championship'] .callout { font-size: 36px; min-height: 70px; margin-top: 14px; }
+  .app[data-mode='championship'] .callout.is-count { font-size: 68px; min-height: 70px; }
+  .app[data-mode='championship'] .tagline { font-size: 12px; }
+  .app[data-mode='championship'] .arena { min-height: 155px; padding-top: 8px; padding-bottom: 10px; }
+  .app[data-mode='championship'] .fighter__body { width: min(32vw, 140px); max-width: 21svh; }
+  .app[data-mode='championship'] .arena__ring { width: 170px; }
+  .app[data-mode='championship'][data-phase] .tagline { display: none; }
+  .app[data-mode='championship'] .rules { min-height: 58px; margin-bottom: 10px; }
+}
+@media (max-height: 620px) {
+  .masthead { display: none; }
+  .mode-nav { margin-bottom: 8px; }
+  .mode-nav button { min-height: 28px; }
+  .edition { margin-top: 6px; }
+  .app[data-phase] .edition, .app[data-phase] .stage-path { display: none; }
+  .app[data-phase] .callout { min-height: 70px; margin-top: 8px; font-size: 36px; }
+  .app[data-mode='championship'] .callout { margin-top: 10px; min-height: 66px; }
+  .app[data-mode='championship'] .tagline { min-height: 0; }
+  .app[data-mode='championship'] .arena { min-height: 145px; }
+  .app[data-mode='championship'] .stage-path { margin-top: 12px; }
+  .app[data-mode='championship'] .fighter__body { width: min(30vw, 120px); max-width: 20svh; }
+  .app[data-mode='championship'] .rules { min-height: 54px; padding-top: 8px; }
+  .app[data-mode='championship'] .hint { font-size: 11px; }
+  .go { min-height: 50px; padding-top: 12px; padding-bottom: 12px; }
+  .privacy { margin-top: 10px; min-height: 2.6em; }
 }

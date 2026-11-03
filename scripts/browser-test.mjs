@@ -4,10 +4,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as pause } from 'node:timers/promises'
-import { createServer } from 'vite'
+import { preview } from 'vite'
 
 const scratch = await mkdtemp(join(tmpdir(), 'mu-screamo-browser-'))
-const server = await createServer({ server: { host: '127.0.0.1', port: 0 } })
+const server = await preview({ preview: { host: '127.0.0.1', port: 0 } })
 const chrome = spawn(process.env.CHROME_BIN ?? 'google-chrome', [
   '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
   '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
@@ -20,6 +20,7 @@ chrome.on('error', error => { launchError = error })
 let socket
 const errors = []
 let id = 0
+let navigation = 0
 const pending = new Map()
 
 async function until(check, label, timeout = 15000) {
@@ -52,7 +53,9 @@ async function screenshot(name) {
 }
 
 async function loaded(url) {
-  await call('Page.navigate', { url })
+  const destination = new URL(url)
+  destination.searchParams.set('browser-load', String(++navigation))
+  await call('Page.navigate', { url: destination.href })
   await until(() => evaluate(`Boolean(document.querySelector('#date-label')?.textContent)`), 'app module loaded')
   await until(() => evaluate(`[...document.images].length === 8 && [...document.images].every(i => i.complete && i.naturalWidth > 0)`), 'all bull images loaded')
 }
@@ -71,7 +74,6 @@ const state = () => evaluate(`({
 })`)
 
 try {
-  await server.listen()
   const url = server.resolvedUrls.local[0]
   let port
   await until(async () => {
@@ -106,7 +108,7 @@ try {
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#scoreboard').hidden`), true)
   assert.equal(await evaluate(`
-    [...document.querySelectorAll('.bull__face')].every(image => {
+    [...document.querySelectorAll('.bull__face, .bull__championship')].every(image => {
       for (let node = image; node; node = node.parentElement) {
         if (getComputedStyle(node).filter !== 'none') return false;
       }
@@ -195,6 +197,145 @@ try {
   assert.equal((await state()).privacy, 'Раунд окончен. Микрофон выключен.')
   await until(async () => !(await state()).hidden && (await state()).button === 'Ещё раунд ↗', 'microphone replay')
   console.log('PASS: real Chrome fake microphone opens, fallback hides, tracks close, replay returns')
+  const delayed = await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    const acquireLater = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = constraints => new Promise(resolve => {
+      window.__resolveMic = async () => resolve(await acquireLater(constraints));
+    });
+  ` })
+  await loaded(url)
+  await evaluate(`document.querySelector('#go').click()`)
+  assert.equal((await state()).disabled, true)
+  await evaluate(`document.querySelector('.mode-nav [data-mode="championship"]').click()`)
+  await evaluate(`window.__resolveMic()`)
+  await pause(200)
+  assert.equal((await state()).phase, undefined)
+  assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
+  console.log('PASS: changing modes while permission is pending discards and closes a late microphone')
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: delayed.identifier })
+
+  await loaded(`${url}#championship`)
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(async () => (await state()).hidden, 'championship microphone round')
+  await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
+  assert.equal((await state()).phase, undefined)
+  assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
+  assert.equal(await evaluate(`document.querySelector('#air').hidden`), true)
+  assert.equal(await evaluate(`localStorage.getItem('bynich.championship.v1')`), null)
+  console.log('PASS: changing modes stops an active microphone and grants no campaign progress')
+
+  await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException('Denied', 'NotAllowedError'));
+  ` })
+  await loaded(`${url}#championship`)
+  assert.equal(await evaluate(`document.querySelectorAll('.stage-step').length`), 5)
+  assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 1)
+  assert.equal(await evaluate(`document.querySelector('.mode-nav [data-mode="championship"]').getAttribute('aria-pressed')`), 'true')
+
+  async function campaignLayout(width, height, name) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    const layout = await evaluate(`(() => {
+      const go = document.querySelector('#go').getBoundingClientRect();
+      const hint = document.querySelector('#hint').getBoundingClientRect();
+      const air = document.querySelector('#air').getBoundingClientRect();
+      const stage = document.querySelector('#stage-path').getBoundingClientRect();
+      return { noticeVisible: !document.querySelector('#save-notice').hidden, noticeBottom: document.querySelector('#save-notice').getBoundingClientRect().bottom, scroll: document.documentElement.scrollWidth, buttonBottom: go.bottom,
+        privacyBottom: document.querySelector('#privacy').getBoundingClientRect().bottom,
+        hintBottom: hint.bottom, buttonTop: go.top, airBottom: air.bottom, hintTop: hint.top, stageBottom: stage.bottom };
+    })()`)
+    await screenshot(name)
+    assert.ok(layout.scroll <= width, `championship horizontal overflow at ${width}×${height}`)
+    assert.ok(layout.buttonBottom <= height && layout.privacyBottom <= height, `championship controls below screen at ${width}×${height}: ${JSON.stringify(layout)}`)
+    assert.ok(layout.hintBottom < layout.buttonTop, 'championship instructions overlap button')
+    if (layout.noticeVisible) assert.ok(layout.noticeBottom <= height, 'save failure notice below screen')
+    if (await evaluate(`!document.querySelector('#air').hidden`)) assert.ok(layout.airBottom < layout.hintTop, 'air overlaps instructions')
+  }
+
+  await campaignLayout(320, 568, 'championship-preview-small')
+  await campaignLayout(390, 844, 'championship-preview')
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(async () => (await state()).phase === 'listen', 'championship begins')
+  await campaignLayout(320, 568, 'championship-playing-small')
+  await until(async () => (await state()).phase === 'done', 'championship loss')
+  await until(async () => (await state()).button === 'Попробовать ещё ↗', 'retry lost stage')
+  assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 1)
+  assert.equal(await evaluate(`localStorage.getItem('bynich.championship.v1')`), null)
+  console.log('PASS: campaign loss retries the same encounter without unlocking anything')
+
+  async function winEncounter(key = '') {
+    await evaluate(`(() => {
+      document.querySelector('#go').click();
+      let held = false;
+      const timer = setInterval(() => {
+        const app = document.querySelector('#app');
+        const go = document.querySelector('#go');
+        const want = app.dataset.phase === 'listen' && app.dataset.breath === 'inhale' && !app.classList.contains('is-exhausted');
+        if (want !== held) {
+          const key = ${JSON.stringify(key)};
+          if (key) {
+            if (want) go.focus();
+            go.dispatchEvent(new KeyboardEvent(want ? 'keydown' : 'keyup', { key, bubbles: true, cancelable: true }));
+          } else go.dispatchEvent(new PointerEvent(want ? 'pointerdown' : 'pointerup', { pointerId: 2 }));
+          held = want;
+        }
+        if (app.dataset.phase === 'done') clearInterval(timer);
+      }, 60);
+    })()`)
+    await until(async () => (await state()).phase === 'done', 'timed championship win')
+    assert.ok((await state()).meter > 8, `timed input must win: ${JSON.stringify(await state())}`)
+    await until(async () => !(await state()).hidden, 'championship result action')
+  }
+
+  for (let stage = 0; stage < 5; stage++) {
+    if (stage === 1) await loaded(`${url}#championship`)
+    else if (stage > 1) await evaluate(`document.querySelector('#go').click()`)
+    assert.equal(await evaluate(`document.querySelector('#app').dataset.fury`), String(stage))
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
+    if (stage > 0) {
+      assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).display`), 'block')
+      const alphaAtlas = await evaluate(`fetch(new URL('art/bull-championship.webp', location.href)).then(r => r.ok)`)
+      assert.equal(alphaAtlas, true)
+      assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).filter`), 'none')
+    }
+    await screenshot(`championship-stage-${stage + 1}`)
+    await winEncounter(stage === 0 ? ' ' : stage === 1 ? 'Enter' : '')
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), stage + 1)
+    assert.equal(await evaluate(`document.querySelectorAll('.stage-step.is-cleared').length`), stage + 1)
+    if (stage < 4) assert.equal((await state()).button, 'Следующая встреча ↗')
+    console.log(`PASS: encounter ${stage + 1} won and saved; fury ${stage} shown`)
+  }
+  assert.equal((await state()).title, 'Чемпион луга!')
+  assert.equal(await evaluate(`document.querySelector('#champion-seal').hidden`), false)
+  await screenshot('championship-finale')
+  await evaluate(`document.querySelector('#go').click()`)
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.fury`), '0')
+  assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 5)
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 5)
+  await evaluate(`document.querySelector('.stage-step[data-stage="4"]').click()`)
+  await evaluate(`document.querySelector('#go').click()`)
+  await until(async () => (await state()).phase === 'listen', 'hard-stage replay')
+  await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3 }))`)
+  await until(() => evaluate(`document.querySelector('#app').classList.contains('is-exhausted')`), 'continuous input exhausts air')
+  assert.equal((await state()).title, 'Вдохни.')
+  assert.equal(await evaluate(`document.querySelector('.air__track').getAttribute('aria-valuenow')`), '0')
+  await campaignLayout(320, 568, 'championship-exhausted-small')
+  await until(async () => (await state()).phase === 'done', 'continuous input loses hard encounter')
+  assert.equal((await state()).title, 'Раунд за Быничем.')
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 5)
+  await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
+  assert.match((await state()).button, /Принять вызов/)
+  assert.equal(await evaluate(`document.querySelector('#stage-path').hidden && document.querySelector('#air').hidden`), true)
+  console.log('PASS: campaign completion, replay without losing unlocks, and return to daily duel')
+
+  await call('Page.addScriptToEvaluateOnNewDocument', { source: `
+    Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } });
+  ` })
+  await loaded(`${url}#championship`)
+  await winEncounter()
+  assert.equal(await evaluate(`document.querySelector('#save-notice').hidden`), false)
+  await campaignLayout(320, 568, 'championship-storage-blocked-small')
+  assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 2)
+  console.log('PASS: blocked storage preserves playable session progress and shows an honest save notice')
   assert.deepEqual(errors, [], 'uncaught browser errors')
   console.log(`Screenshots: ${scratch}`)
 } finally {
