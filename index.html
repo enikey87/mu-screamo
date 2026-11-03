@@ -28,9 +28,15 @@
         </nav>
         <h1 class="callout" id="callout">
           <span id="callout-label">Ну что,<br />кто кого?</span>
-          <span class="player-window" id="player-window" hidden>
-            <span id="player-time"></span>
-            <span class="player-window__track" id="player-meter" role="progressbar" aria-label="Осталось мычать" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="player-fill"></span></span>
+          <span class="turn-windows">
+            <span class="player-window" id="player-window" hidden>
+              <span class="timer-caption">Твоё му<span id="player-time"></span></span>
+              <span class="player-window__track" id="player-meter" role="progressbar" aria-label="Осталось мычать" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="player-fill"></span></span>
+            </span>
+            <span class="bull-window" id="bull-window" hidden>
+              <span class="timer-caption"><span id="bull-action"></span><span id="bull-time"></span></span>
+              <span class="bull-window__track" id="bull-meter" role="progressbar" aria-label="Вдох Бынича до следующего му" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="bull-fill"></span></span>
+            </span>
           </span>
         </h1>
       </header>

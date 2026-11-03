@@ -1,7 +1,7 @@
 /** Ор на приглашении не должен поднимать порог, поэтому комната снимается до него. */
 export const HUSH_MS = 400
-export const INVITE_MS = 2_000
-export const COUNT_AT_MS = [HUSH_MS, HUSH_MS + INVITE_MS / 3, HUSH_MS + INVITE_MS * 2 / 3, HUSH_MS + INVITE_MS] as const
+export const INVITE_MS = 4_000
+export const COUNT_AT_MS = [HUSH_MS, HUSH_MS + 1000, HUSH_MS + 2000, HUSH_MS + 3000, HUSH_MS + INVITE_MS] as const
 export const LISTEN_MS = 8_000
 export const ROUND_MS = HUSH_MS + INVITE_MS + LISTEN_MS
 

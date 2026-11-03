@@ -54,6 +54,7 @@ export interface View {
   exhausted: boolean
   inhale: number | null
   inhaleRemaining: number | null
+  bullCue: { kind: 'inhale' | 'voice' | 'rest'; remaining: number; fraction: number } | null
   cue: { kind: 'ready' | 'moo' | 'pause'; remaining: number | null; fraction: number | null } | null
 }
 
@@ -216,6 +217,10 @@ function viewOf(round: Round, t: number): View {
     inhale: inhale?.progress ?? null,
     inhaleRemaining: inhale?.remaining ?? null,
     cue,
+    bullCue: window ? window.kind === 'voice'
+      ? { kind: 'voice', remaining: window.remaining, fraction: 1 }
+      : window.next === 'voice' ? { kind: 'inhale', remaining: window.remaining, fraction: window.progress }
+        : { kind: 'rest', remaining: 0, fraction: 0 } : null,
     elapsed: Math.min(Math.max(t, 0), ROUND_MS),
   }
 }
@@ -258,8 +263,9 @@ function breathOf(round: Round, phase: View['phase'], t: number): View['breath']
 
 function countdownAt(t: number): string {
   if (t < HUSH_MS) return 'Тише…'
-  if (t < COUNT_AT_MS[1]) return '3'
-  if (t < COUNT_AT_MS[2]) return '2'
+  if (t < COUNT_AT_MS[1]) return '4'
+  if (t < COUNT_AT_MS[2]) return '3'
+  if (t < COUNT_AT_MS[3]) return '2'
   return '1'
 }
 

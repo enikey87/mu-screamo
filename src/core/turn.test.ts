@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { STAGES } from './championship'
 import { breathAt, type DailyBull } from './daily'
 import { createRound, push } from './round'
-import { ROUND_MS } from './timing'
+import { HUSH_MS, INVITE_MS, ROUND_MS } from './timing'
 import { startWith, tossStarter } from './turn'
 
 const fixture = (): DailyBull => ({ dateKey: 'test', label: 'test', pitch: 110, fury: 2, segments: [
@@ -56,7 +56,8 @@ describe('first moo', () => {
       const round = createRound(bull.segments, stage.rules)
       let view = push(round, { t: 0, db: -60, moo: false, hold: false })
       for (let t = 10; t <= ROUND_MS && view.phase !== 'done'; t += 10) {
-        const hold = t >= 2550 && breathAt(bull.segments, t - 2550) === 'inhale'
+        const delayedStart = HUSH_MS + INVITE_MS + 150
+        const hold = t >= delayedStart && breathAt(bull.segments, t - delayedStart) === 'inhale'
         view = push(round, { t, db: -60, moo: false, hold })
       }
       expect(view.pleased).toBe(true)

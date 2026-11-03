@@ -1,6 +1,6 @@
 import { COUNT_AT_MS } from '../core/timing'
 
-const FREQ = [523, 659, 784, 1_047]
+const FREQ = [440, 523, 659, 784, 1_047]
 
 export function playCountdown(ctx: AudioContext, origin: number, destination: AudioNode = ctx.destination): () => void {
   const osc = ctx.createOscillator()

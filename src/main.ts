@@ -42,6 +42,11 @@ const airLabel = required<HTMLElement>('#air-label')
 const championSeal = required<HTMLElement>('#champion-seal')
 const saveNotice = required<HTMLElement>('#save-notice')
 const coin = required<HTMLElement>('#coin-toss')
+const bullWindow = required<HTMLElement>('#bull-window')
+const bullAction = required<HTMLElement>('#bull-action')
+const bullTime = required<HTMLElement>('#bull-time')
+const bullMeter = required<HTMLElement>('#bull-meter')
+const bullFill = required<HTMLElement>('#bull-fill')
 const playerWindow = required<HTMLElement>('#player-window')
 const playerMeter = required<HTMLElement>('#player-meter')
 const playerFill = required<HTMLElement>('#player-fill')
@@ -101,6 +106,13 @@ function resetArena(): void {
   scoreboard.hidden = true
   championSeal.hidden = true
   air.hidden = true
+  bullWindow.hidden = true
+  delete app.dataset.bullCue
+  bullMeter.setAttribute('aria-valuenow', '0')
+  bullMeter.setAttribute('aria-valuetext', '')
+  bullFill.style.transform = 'scaleX(0)'
+  bullAction.textContent = ''
+  bullTime.textContent = ''
   playerWindow.hidden = true
   playerMeter.setAttribute('aria-valuenow', '0')
   playerMeter.setAttribute('aria-valuetext', '')
@@ -366,7 +378,7 @@ function render(view: View): void {
   if (calloutLabel.textContent !== view.shout) {
     calloutLabel.textContent = view.shout
     callout.classList.remove('is-pop')
-    if (view.phase !== 'listen') {
+    if (view.phase === 'done') {
       void callout.offsetWidth
       callout.classList.add('is-pop')
     }
@@ -384,6 +396,15 @@ function render(view: View): void {
   const seconds = remaining === null ? '' : (Math.ceil(remaining / 100) / 10).toFixed(1).replace('.', ',')
   playerTime.textContent = remaining === null ? '' : `${seconds} с`
   playerMeter.setAttribute('aria-valuetext', playerTime.textContent)
+  const enemy = view.bullCue
+  bullWindow.hidden = enemy === null
+  if (enemy) app.dataset.bullCue = enemy.kind === 'inhale' && enemy.remaining <= 500 ? 'warning' : enemy.kind
+  else delete app.dataset.bullCue
+  bullAction.textContent = enemy?.kind === 'inhale' ? 'Бынич замычит' : enemy?.kind === 'voice' ? 'Бынич мычит' : 'Бынич выдохся'
+  bullTime.textContent = enemy?.kind === 'inhale' ? `через ${(Math.ceil(enemy.remaining / 100) / 10).toFixed(1).replace('.', ',')} с` : enemy?.kind === 'voice' ? 'Набери воздух' : ''
+  bullFill.style.transform = `scaleX(${enemy?.fraction ?? 0})`
+  bullMeter.setAttribute('aria-valuenow', String(Math.floor((enemy?.fraction ?? 0) * 100)))
+  bullMeter.setAttribute('aria-valuetext', `${bullAction.textContent} ${bullTime.textContent}`.trim())
   air.hidden = view.air === null
   if (view.air !== null) {
     airFill.style.transform = `scaleX(${view.air})`
