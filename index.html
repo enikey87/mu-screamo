@@ -6,7 +6,7 @@
     <title>Битва с Быничем</title>
     <meta
       name="description"
-      content="Две секунды можно орать. Дальше Бынич записывает в протокол только мууу."
+      content="Мычи в его вдох. Крик шкалу не двигает."
     />
     <meta name="theme-color" content="#d7f0ff" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='36' r='22' fill='%23c98a5b'/><ellipse cx='16' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(-30 16 18)'/><ellipse cx='48' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(30 48 18)'/><circle cx='24' cy='34' r='4' fill='%2385c6ec'/><circle cx='40' cy='34' r='4' fill='%2385c6ec'/></svg>" />
@@ -31,20 +31,10 @@
         </div>
       </div>
       <div class="flash" aria-hidden="true"></div>
-      <p class="paper" id="line" aria-live="polite"></p>
       <button class="go" id="go" type="button">В бой</button>
       <p class="hint" id="hint">Мычи в его вдох. Крик шкалу не двигает.</p>
       <p class="privacy">Микрофон включён только на время раунда. Ничего не записывается и не отправляется.</p>
     </main>
-
-    <dialog class="card-dialog" id="card-dialog">
-      <canvas id="card" width="1080" height="1920"></canvas>
-      <div class="card-actions">
-        <button id="save" type="button">Сохранить картинку</button>
-        <button id="copy" class="ghost" type="button">Скопировать строку</button>
-        <button id="again" class="ghost" type="button">Ещё раз</button>
-      </div>
-    </dialog>
 
     <template id="bull-tpl">
       <svg class="bull" viewBox="0 0 420 470" role="img">

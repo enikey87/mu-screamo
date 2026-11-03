@@ -4,10 +4,7 @@ export const INVITE_MS = 2_000
 export const LISTEN_MS = 8_000
 export const ROUND_MS = HUSH_MS + INVITE_MS + LISTEN_MS
 
-/** Поверх голоса быка очко меньше: попасть нужно в его вдох. */
-export const VOICE_WEIGHT = 0.35
-
-/** Нокаут позже четырёх секунд «мууу» во вдох: канат и фраза заканчиваются вместе. */
+/** Нокаут после примерно четырёх секунд «мууу» во вдох. */
 export const KO_PULL_MS = 4_400
 export const INHALE_PLAYER = 1.35
 export const INHALE_BULL = 0.12
