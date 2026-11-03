@@ -12,13 +12,24 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='36' r='22' fill='%23c98a5b'/><ellipse cx='16' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(-30 16 18)'/><ellipse cx='48' cy='18' rx='8' ry='4' fill='%23f0e0c4' transform='rotate(30 48 18)'/><circle cx='24' cy='34' r='4' fill='%2385c6ec'/><circle cx='40' cy='34' r='4' fill='%2385c6ec'/></svg>" />
   </head>
   <body>
-    <main class="app" id="app" aria-label="Деревенский чемпионат">
+    <main class="app" id="app" data-mode="daily" aria-label="Битва с Быничем">
       <header class="sheet">
+        <nav class="mode-nav" aria-label="Режим игры">
+          <button type="button" data-mode="daily" aria-pressed="true">Дуэль дня</button>
+          <button type="button" data-mode="championship" aria-pressed="false">Чемпионат луга</button>
+        </nav>
         <div class="masthead">
           <span>Голосовая дуэль</span>
           <span>Бынич вызывает</span>
         </div>
-        <div class="edition"><span>Деревенский чемпионат</span><time id="date-label"></time></div>
+        <div class="edition"><span id="edition-label">Дуэль дня</span><time id="date-label"></time><span id="stage-mood" hidden></span></div>
+        <nav class="stage-path" id="stage-path" aria-label="Встречи чемпионата" hidden>
+          <button class="stage-step" type="button" data-stage="0">1</button>
+          <button class="stage-step" type="button" data-stage="1">2</button>
+          <button class="stage-step" type="button" data-stage="2">3</button>
+          <button class="stage-step" type="button" data-stage="3">4</button>
+          <button class="stage-step" type="button" data-stage="4">5</button>
+        </nav>
         <h1 class="callout" id="callout">Ну что,<br />кто кого?</h1>
         <p class="tagline">На лугу решают мычанием.</p>
       </header>
@@ -39,13 +50,14 @@
         <div class="fighter fighter--bull" id="fighter-bull">
           <div class="fighter__body">
             <div class="bull" id="bull-bull">
+              <span class="bull__championship" aria-hidden="true"></span>
               <img class="bull__face bull__face--calm" src="./art/bull-calm.webp" alt="" />
               <img class="bull__face bull__face--fierce" src="./art/bull-fierce.webp" alt="" />
               <img class="bull__face bull__face--pleased" src="./art/bull-pleased.webp" alt="" />
               <img class="bull__face bull__face--puzzled" src="./art/bull-puzzled.webp" alt="" />
             </div>
           </div>
-          <span class="fighter__name">Бынич</span>
+          <span class="fighter__name" id="bull-name">Бынич</span>
         </div>
       </div>
       <div class="scoreboard" id="scoreboard" hidden>
@@ -56,6 +68,11 @@
         </div>
         <div class="clock" aria-hidden="true"><span id="clock"></span></div>
       </div>
+      <div class="air" id="air" hidden>
+        <div class="air__label"><span>Твой воздух</span><span id="air-label">Молчишь — восстанавливаешь</span></div>
+        <div class="air__track" role="meter" aria-label="Запас воздуха" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span id="air-fill"></span></div>
+      </div>
+      <span class="champion-seal" id="champion-seal" hidden>Чемпион<br />луга</span>
       <div class="flash" aria-hidden="true"></div>
       <footer class="dock">
         <div class="rules">
@@ -64,6 +81,7 @@
         </div>
         <button class="go" id="go" type="button">Принять вызов <span aria-hidden="true">↗</span></button>
         <p class="privacy" id="privacy">Нужен микрофон. Голос остаётся у тебя.</p>
+        <p class="save-notice" id="save-notice" role="status" hidden>Браузер не сохранил прогресс. Он останется до закрытия страницы.</p>
       </footer>
     </main>
 

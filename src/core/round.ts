@@ -24,6 +24,13 @@ export interface Sample {
   hold: boolean
 }
 
+export interface RoundRules {
+  airMs: number
+  recoveryRate: number
+  recoverAt: number
+  bullForce: number
+}
+
 export interface View {
   phase: 'hush' | 'invite' | 'listen' | 'done'
   breath: 'hush' | 'bait' | 'voice' | 'inhale'
@@ -38,6 +45,8 @@ export interface View {
   cheeks: number
   pleased: boolean
   puzzled: boolean
+  air: number | null
+  exhausted: boolean
 }
 
 export interface Round {
@@ -51,9 +60,12 @@ export interface Round {
   youHot: boolean
   bullHot: boolean
   finished: boolean
+  rules: RoundRules | null
+  airMs: number
+  exhausted: boolean
 }
 
-export function createRound(segments: Segment[]): Round {
+export function createRound(segments: Segment[], rules?: RoundRules): Round {
   return {
     segments,
     ambient: [],
@@ -65,6 +77,9 @@ export function createRound(segments: Segment[]): Round {
     youHot: false,
     bullHot: false,
     finished: false,
+    rules: rules ?? null,
+    airMs: rules?.airMs ?? 0,
+    exhausted: false,
   }
 }
 
@@ -109,8 +124,9 @@ export function push(round: Round, sample: Sample): View {
     const gated = sample.db >= round.threshold + VOICE_GATE_DB
     const counts = sample.hold || (kind === 'inhale' ? sample.moo && loud : sample.moo && gated)
     const player = counts ? (kind === 'inhale' ? INHALE_PLAYER : VOICE_PLAYER) : 0
-    const bull = kind === 'inhale' ? INHALE_BULL : VOICE_BULL
-    round.pull += (player - bull) * slice
+    const bull = (kind === 'inhale' ? INHALE_BULL : VOICE_BULL) * (round.rules?.bullForce ?? 1)
+    const activeMs = useAir(round, sample.hold || loud, slice)
+    round.pull += player * activeMs - bull * slice
     cursor = sliceEnd
     if (round.pull >= KO_PULL_MS || round.pull <= -KO_PULL_MS) {
       round.pull = clamp(round.pull, -KO_PULL_MS, KO_PULL_MS)
@@ -125,6 +141,21 @@ export function push(round: Round, sample: Sample): View {
   return viewOf(round, to)
 }
 
+function useAir(round: Round, speaking: boolean, ms: number): number {
+  const rules = round.rules
+  if (!rules) return ms
+  if (!speaking) {
+    round.airMs = Math.min(rules.airMs, round.airMs + ms * rules.recoveryRate)
+    if (round.airMs >= rules.airMs * rules.recoverAt) round.exhausted = false
+    return 0
+  }
+  if (round.exhausted) return 0
+  const activeMs = Math.min(ms, round.airMs)
+  round.airMs = Math.max(0, round.airMs - ms)
+  if (round.airMs === 0) round.exhausted = true
+  return activeMs
+}
+
 function viewOf(round: Round, t: number): View {
   const phase = round.finished ? 'done' : phaseOf(t)
   const breath = breathOf(round, phase, t)
@@ -132,20 +163,23 @@ function viewOf(round: Round, t: number): View {
   const tug = clamp(round.pull / KO_PULL_MS, -1, 1)
   const yours = tug > 0.08
   const his = tug < -0.08
+  const recovering = phase === 'listen' && round.exhausted
   return {
     phase,
     breath,
-    shout: done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : shoutOf(phase, breath, t),
+    shout: done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : recovering ? 'Вдохни.' : shoutOf(phase, breath, t),
     youHot: round.youHot,
     bullHot: round.bullHot,
     hint: done
       ? yours ? 'Бынич просит реванш.' : his ? 'Его вдох — твой шанс. Попробуем ещё?' : 'Никто не уступил. Ещё раунд?'
-      : hintOf(phase, breath),
+      : recovering ? 'Воздух кончился. Сделай паузу, чтобы восстановиться.' : hintOf(phase, breath),
     proximity: round.proximity,
     cheeks: cheeksOf(phase, breath, round.proximity),
     pleased: done && yours,
     puzzled: done && his,
     tug,
+    air: round.rules ? clamp(round.airMs / round.rules.airMs, 0, 1) : null,
+    exhausted: round.exhausted,
     elapsed: Math.min(Math.max(t, 0), ROUND_MS),
   }
 }
@@ -197,7 +231,7 @@ function touchFaces(round: Round, sample: Sample): void {
   const kind = breathAt(round.segments, sample.t - LISTEN_START)
   const gated = sample.db >= round.threshold + VOICE_GATE_DB
   const counts = sample.hold || (kind === 'inhale' ? sample.moo && loud : sample.moo && gated)
-  round.youHot = counts
+  round.youHot = counts && !round.exhausted
   round.bullHot = kind === 'voice'
 }
 
