@@ -511,10 +511,30 @@ body {
   .app[data-mode='championship'] .fighter__body { width: 170px; }
 }
 
-.player-window { display: grid; gap: 6px; width: min(260px, 100%); margin-top: 8px; letter-spacing: 0; text-transform: none; }
-#player-time { font-size: 18px; line-height: 1; font-weight: 700; }
-.player-window__track { display: block; height: 6px; overflow: hidden; background: #19734a26; }
-#player-fill { display: block; height: 100%; background: var(--win); transform-origin: left; }
-.app[data-cue='moo'] .callout { color: var(--win); }
-.app[data-cue='ready'] .callout { color: var(--even); font-size: clamp(26px, 8vw, 40px); }
-@media (min-width: 1000px) { #player-time { font-size: 20px; } }
+.turn-windows { display: none; }
+.app[data-phase] .callout { height: 112px; min-height: 112px; margin: 12px 0 0; justify-content: flex-start; font-size: clamp(26px, 8vw, 48px); }
+.app[data-phase] #callout-label { display: flex; align-items: center; flex: 0 0 58px; height: 58px; line-height: 1.05; }
+.app[data-phase] .callout.is-count { font-size: 54px; min-height: 112px; }
+.app[data-phase] .turn-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; width: min(460px, 100%); height: 46px; margin-top: 8px; }
+.player-window, .bull-window { display: grid; grid-template-rows: 32px 6px; gap: 4px; min-width: 0; letter-spacing: 0; text-transform: none; }
+.bull-window { grid-column: 2; color: var(--breath); }
+.timer-caption { display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; line-height: 1.2; font-weight: 700; }
+#player-time, #bull-time { font-variant-numeric: tabular-nums; }
+.player-window__track, .bull-window__track { display: block; height: 6px; overflow: hidden; background: #19734a26; }
+.bull-window__track { background: #376f8a26; }
+#player-fill, #bull-fill { display: block; height: 100%; background: currentColor; transform-origin: left; }
+.player-window, .app[data-cue='moo'] .callout { color: var(--win); }
+.app[data-cue='ready'] .callout { color: var(--even); }
+.app[data-bull-cue='warning'] .bull-window, .app[data-bull-cue='voice'] .bull-window { color: var(--lose); }
+.app[data-phase] .rules { height: 44px; min-height: 44px; }
+@media (max-height: 620px) {
+  .app[data-phase] .callout, .app[data-phase] .callout.is-count { height: 100px; min-height: 100px; font-size: 24px; }
+  .app[data-phase] #callout-label { height: 46px; flex-basis: 46px; line-height: .95; }
+  .app[data-phase] .callout.is-count { font-size: 46px; }
+}
+@media (min-width: 1000px) {
+  .app[data-phase] .callout { height: 132px; min-height: 132px; margin: 0; font-size: 50px; }
+  .app[data-phase] #callout-label { height: 78px; flex-basis: 78px; }
+  .app[data-phase] .callout.is-count { font-size: 74px; min-height: 132px; }
+  .timer-caption { font-size: 14px; }
+}

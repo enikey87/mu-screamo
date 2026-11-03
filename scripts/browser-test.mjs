@@ -121,12 +121,20 @@ async function checkInhale(reduced = false, recognized = false) {
       badge.bottom <= header.bottom;
   })()`)
   assert.equal(clear, true, 'breath timer must fit and stay clear of other text')
+  const enemy = await evaluate(`({ kind: document.querySelector('#app').dataset.bullCue, text: document.querySelector('#bull-action').textContent, time: document.querySelector('#bull-time').textContent, fill: new DOMMatrix(getComputedStyle(document.querySelector('#bull-fill')).transform).a, percent: Number(document.querySelector('#bull-meter').getAttribute('aria-valuenow')) })`)
+  assert.equal(await evaluate(`document.querySelector('#bull-window').hidden`), false)
+  if (enemy.kind === 'inhale' || enemy.kind === 'warning') {
+    assert.equal(enemy.text, 'Бынич замычит')
+    assert.match(enemy.time, /^через [0-9]+,[0-9] с$/)
+    assert.ok(Math.abs(enemy.fill - enemy.percent / 100) < .011, 'visible bull inhale must match the reported progress')
+  } else assert.equal(enemy.text, 'Бынич выдохся', 'final inhale must not promise an attack')
   const first = await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`)
   await pause(100)
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), true)
   assert.ok(await evaluate(`Number(document.querySelector('#player-meter').getAttribute('aria-valuenow'))`) < progress, 'player time must keep shrinking')
   assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#player-fill')).transform).a`) < fill, 'rendered player bar must keep shrinking')
   assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).transform`), first, 'bull expands during its inhale')
+  if (enemy.kind === 'inhale' || enemy.kind === 'warning') assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('#bull-fill')).transform).a`) > enemy.fill, 'enemy fills its inhale while player time shrinks')
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.breath-cue')).display === 'none'`), false)
   assert.equal(await evaluate(`document.querySelector('#bull-bull').classList.contains('is-fierce')`), false, 'mouth closes on inhale')
   if (reduced) {
@@ -144,6 +152,34 @@ async function checkInhale(reduced = false, recognized = false) {
     await until(async () => (await state()).title === 'МЫЧИ', 'releasing input removes recognition feedback')
     await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2 }))`)
     await until(async () => (await state()).title === 'Держи!', 'recognized input confirms holding again')
+  }
+}
+
+async function assertStableCues(mode) {
+  for (const [width, height] of [[280, 560], [320, 568], [375, 667], [1280, 720], [1920, 1080]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    const frames = await evaluate(`(() => {
+      const app = document.querySelector('#app'), label = document.querySelector('#callout-label');
+      const player = document.querySelector('#player-window'), hint = document.querySelector('#hint');
+      return [['moo', 'МЫЧИ', 'Продолжай «му-у-у» до конца полоски.'],
+        ['moo', 'Держи!', 'Продолжай «му-у-у» до конца полоски.'],
+        ['pause', 'ПАУЗА', 'Набери воздух — помолчи до восстановления.'],
+        ['ready', 'Приготовься…', 'Скоро твой выход. Жди сигнала.'],
+        ['count', '4', 'Первым мычит Бынич. Жди сигнала.']].map(([cue, text, detail]) => {
+          app.dataset.phase = cue === 'count' ? 'invite' : 'listen';
+          label.parentElement.classList.toggle('is-count', cue === 'count');
+          app.dataset.cue = cue; label.textContent = text; player.hidden = cue !== 'moo'; hint.textContent = detail;
+          return { text, boxes: ['.sheet', '#callout-label', '.arena', '.gauge', '.rules', '#go'].map(selector => {
+            const node = document.querySelector(selector), box = node.getBoundingClientRect();
+            return [selector, box.top, box.height];
+          }), fits: (() => { const range = document.createRange(); range.selectNodeContents(label); const text = range.getBoundingClientRect(), heading = label.parentElement.getBoundingClientRect(); return text.left >= heading.left && text.right <= heading.right && text.bottom <= heading.bottom && hint.scrollHeight <= hint.parentElement.clientHeight; })() };
+        });
+    })()`)
+    assert.equal(frames.length, 5)
+    for (const frame of frames) {
+      assert.ok(frame.fits, `${mode} instruction clips at ${width}×${height}: ${frame.text}`)
+      assert.deepEqual(frame.boxes, frames[0].boxes, `${mode} command must not move layout at ${width}×${height}: ${frame.text}`)
+    }
   }
 }
 
@@ -271,6 +307,7 @@ try {
     await evaluate(`window.__coinValue = .25; document.querySelector('#go').click(); window.__denyMic()`)
     await until(async () => (await state()).phase === 'listen', 'desktop fallback round begins')
     await checkInhale()
+    await assertStableCues(mode)
     for (const [width, height] of [[1280, 720], [1000, 768], [1280, 900], [1920, 1080]]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
       const controls = await evaluate(`(() => {
@@ -297,13 +334,13 @@ try {
   })()`)
   await until(async () => (await state()).phase === 'listen', 'rhythmic countdown reaches the fight')
   const counts = await evaluate(`({ labels: window.__countLabels, origin: window.__gameContexts[0].__starts[0] * 1000 - 400 })`)
-  for (const [index, text] of ['3', '2', '1'].entries()) {
+  for (const [index, text] of ['4', '3', '2', '1'].entries()) {
     const event = counts.labels.find(item => item.text === text);
     assert.ok(event, `missing visible count ${text}: ${JSON.stringify(counts)}`)
-    assert.ok(Math.abs(event.time - counts.origin - (400 + index * 2000 / 3)) < 80, `visible ${text} must match its scheduled sound: ${JSON.stringify(counts)}`)
+    assert.ok(Math.abs(event.time - counts.origin - (400 + index * 1000)) < 80, `visible ${text} must match its scheduled sound: ${JSON.stringify(counts)}`)
   }
   const startEvent = counts.labels.find(item => item.phase === 'listen')
-  assert.ok(startEvent && Math.abs(startEvent.time - counts.origin - 2400) < 80, 'fight must begin on the fourth beat')
+  assert.ok(startEvent && Math.abs(startEvent.time - counts.origin - 4400) < 80, 'fight must begin after the full last beat')
   console.log('PASS: visible countdown and fight start follow the same evenly spaced audio clock')
   for (const first of ['you', 'bull']) {
     await loaded(url)
@@ -334,7 +371,14 @@ try {
     assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-hot')`), first === 'bull')
     if (first === 'you') {
       await checkInhale()
+      await until(() => evaluate(`document.querySelector('#app').dataset.bullCue === 'warning'`), 'last half-second warns of the attack')
+      const warning = await evaluate(`({ text: document.querySelector('#bull-time').textContent, color: getComputedStyle(document.querySelector('#bull-window')).color })`)
+      assert.match(warning.text, /^через 0,[1-5] с$/)
+      assert.equal(warning.color, 'rgb(182, 59, 42)')
+      await screenshot('bull-about-to-moo')
       await until(async () => (await state()).breath === 'voice', 'bull begins after opening inhale')
+      assert.equal(await evaluate(`document.querySelector('#bull-action').textContent`), 'Бынич мычит')
+      assert.equal(await evaluate(`document.querySelector('#app').dataset.bullCue`), 'voice')
       assert.equal(await evaluate(`document.querySelector('#player-meter').getAttribute('aria-valuenow')`), '0')
       assert.equal(await evaluate(`document.querySelector('#player-window').hidden`), true)
       assert.match((await state()).title, /^(ПАУЗА|Приготовься…)$/)
@@ -516,7 +560,7 @@ try {
     const stopped = new OfflineAudioContext(1, 48000, 48000);
     const stop = playBull(stopped, { pitch: 110, fury: 4, segments: [{ kind: 'voice', ms: 800 }] }, .1);
     stop(); stop();
-    const countContext = new OfflineAudioContext(1, 144000, 48000);
+    const countContext = new OfflineAudioContext(1, 240000, 48000);
     playCountdown(countContext, .1);
     const countData = (await countContext.startRendering()).getChannelData(0), countOnsets = [];
     for (let i = 0; i < countData.length; i++) {
@@ -525,10 +569,10 @@ try {
     return { countOnsets, routed, profiles: results, stoppedPeak: Math.max(...(await stopped.startRendering()).getChannelData(0).map(Math.abs)) };
   })()`)
   console.log('Audio renders:', JSON.stringify(rendered))
-  assert.equal(rendered.countOnsets.length, 4, 'all four countdown sounds must actually render')
-  for (let index = 0; index < 4; index++) {
-    assert.ok(Math.abs(rendered.countOnsets[index] - (.5 + index * 2 / 3)) < .02, 'rendered onset must match the shared beat')
-    if (index > 0) assert.ok(Math.abs(rendered.countOnsets[index] - rendered.countOnsets[index - 1] - 2 / 3) < .003, 'audible countdown intervals must be equal')
+  assert.equal(rendered.countOnsets.length, 5, 'all five countdown sounds must actually render')
+  for (let index = 0; index < 5; index++) {
+    assert.ok(Math.abs(rendered.countOnsets[index] - (.5 + index)) < .02, 'rendered onset must match the shared beat')
+    if (index > 0) assert.ok(Math.abs(rendered.countOnsets[index] - rendered.countOnsets[index - 1] - 1) < .003, 'audible countdown intervals must be equal')
   }
   assert.ok(rendered.routed[0] > 0.1, 'game audio must be audible through its output bus')
   assert.equal(rendered.routed[1], 0, 'neither bull nor countdown may bypass the echo reference bus')
@@ -801,12 +845,15 @@ try {
   await loaded(`${url}#championship`)
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).hidden, 'championship microphone round')
+  await until(async () => (await state()).phase === 'listen', 'enemy indicator is active before switching modes')
+  assert.equal(await evaluate(`document.querySelector('#bull-window').hidden`), false)
   await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
   assert.equal((await state()).phase, undefined)
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
   assert.equal(await evaluate(`document.querySelector('#air').hidden`), true)
   assert.equal(await evaluate(`localStorage.getItem('bynich.championship.v1')`), null)
   await assertFear(0, 0)
+  assert.equal(await evaluate(`document.querySelector('#bull-window').hidden && document.querySelector('#bull-meter').getAttribute('aria-valuenow') === '0' && !document.querySelector('#app').dataset.bullCue`), true)
   console.log('PASS: changing modes stops an active microphone and grants no campaign progress')
 
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `

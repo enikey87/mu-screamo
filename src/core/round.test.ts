@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { breathAt, type Segment } from './daily'
 import { STAGES } from './championship'
 import { createRound, push, type Round, type Sample } from './round'
-import { KO_PULL_MS, ROUND_MS } from './timing'
+import { HUSH_MS, INVITE_MS, KO_PULL_MS, ROUND_MS } from './timing'
 
+const start = HUSH_MS + INVITE_MS
 const room: Sample = { t: 0, db: -60, moo: false, hold: false }
 
 function walk(round: Round, from: number, to: number, patch: Partial<Sample>): void {
@@ -21,55 +22,55 @@ function ready(segments: Segment[]): Round {
 describe('push', () => {
   it('gives an inhale more rope than a moo over his voice', () => {
     const inhale = ready([{ kind: 'inhale', ms: 8000 }])
-    walk(inhale, 2_400, 4_000, { hold: true })
+    walk(inhale, start, start + 1600, { hold: true })
     const over = ready([{ kind: 'voice', ms: 8000 }])
-    walk(over, 2_400, 4_000, { hold: true })
-    const inhaleTug = push(inhale, { ...room, t: 4_000, hold: true }).tug
-    const overTug = push(over, { ...room, t: 4_000, hold: true }).tug
+    walk(over, start, start + 1600, { hold: true })
+    const inhaleTug = push(inhale, { ...room, t: start + 1600, hold: true }).tug
+    const overTug = push(over, { ...room, t: start + 1600, hold: true }).tug
     expect(inhaleTug).toBeGreaterThan(0.3)
     expect(overTug).toBeLessThan(0)
     expect(inhaleTug).toBeGreaterThan(overTug)
-    expect(push(inhale, { ...room, t: 4_000, hold: true }).shout).toBe('Держи!')
+    expect(push(inhale, { ...room, t: start + 1600, hold: true }).shout).toBe('Держи!')
   })
 
   it('lets a scream during the invite leave the rope where it was', () => {
     const round = ready([{ kind: 'inhale', ms: 8000 }])
-    walk(round, 500, 2_300, { db: -8 })
-    const invited = push(round, { ...room, t: 2_300, db: -8 })
+    walk(round, 500, start - 100, { db: -8 })
+    const invited = push(round, { ...room, t: start - 100, db: -8 })
     expect(invited.phase).toBe('invite')
     expect(invited.shout).toBe('1')
     expect(invited.tug).toBe(0)
     expect(invited.proximity).toBeGreaterThan(0.6)
-    walk(round, 2_400, 4_000, { db: -8, moo: false })
-    const yelled = push(round, { ...room, t: 4_000, db: -8 })
+    walk(round, start, start + 1600, { db: -8, moo: false })
+    const yelled = push(round, { ...room, t: start + 1600, db: -8 })
     expect(yelled.tug).toBeGreaterThan(-0.15)
     expect(yelled.tug).toBeLessThan(0.05)
   })
 
   it('ignores a loud non-moo while the bull himself is mooing', () => {
     const yelled = ready([{ kind: 'voice', ms: 8000 }])
-    walk(yelled, 2_400, 4_000, { db: -8, moo: false })
+    walk(yelled, start, start + 1600, { db: -8, moo: false })
     const quiet = ready([{ kind: 'voice', ms: 8000 }])
-    walk(quiet, 2_400, 4_000, { db: -60 })
-    const yelledTug = push(yelled, { ...room, t: 4_000, db: -8 }).tug
-    const quietTug = push(quiet, { ...room, t: 4_000, db: -60 }).tug
+    walk(quiet, start, start + 1600, { db: -60 })
+    const yelledTug = push(yelled, { ...room, t: start + 1600, db: -8 }).tug
+    const quietTug = push(quiet, { ...room, t: start + 1600, db: -60 }).tug
     expect(yelledTug).toBeCloseTo(quietTug, 2)
     expect(yelledTug).toBeLessThan(0)
   })
 
   it('drags the rope toward a moo and toward the bull when you stay quiet', () => {
     const yours = ready([{ kind: 'inhale', ms: 8000 }])
-    walk(yours, 2_400, 4_000, { hold: true })
-    expect(push(yours, { ...room, t: 4_000, hold: true }).tug).toBeGreaterThan(0.3)
+    walk(yours, start, start + 1600, { hold: true })
+    expect(push(yours, { ...room, t: start + 1600, hold: true }).tug).toBeGreaterThan(0.3)
 
     const his = ready([{ kind: 'voice', ms: 8000 }])
-    walk(his, 2_400, 4_000, { db: -60 })
-    expect(push(his, { ...room, t: 4_000, db: -60 }).tug).toBeLessThan(-0.2)
+    walk(his, start, start + 1600, { db: -60 })
+    expect(push(his, { ...room, t: start + 1600, db: -60 }).tug).toBeLessThan(-0.2)
   })
 
   it('ends the round when the inhale moo reaches the far edge', () => {
     const round = ready([{ kind: 'inhale', ms: 8000 }])
-    walk(round, 2_400, ROUND_MS, { hold: true })
+    walk(round, start, ROUND_MS, { hold: true })
     const view = push(round, { ...room, t: ROUND_MS, hold: true })
     expect(view.phase).toBe('done')
     expect(view.pleased).toBe(true)
@@ -81,11 +82,12 @@ describe('push', () => {
 describe('championship copy', () => {
   it.each([
     [0, 'hush', 'Тише…'],
-    [1066, 'invite', '3'],
-    [1067, 'invite', '2'],
-    [1733, 'invite', '2'],
-    [1734, 'invite', '1'],
-    [2399, 'invite', '1'],
+    [400, 'invite', '4'],
+    [1399, 'invite', '4'],
+    [1400, 'invite', '3'],
+    [2400, 'invite', '2'],
+    [3400, 'invite', '1'],
+    [4399, 'invite', '1'],
   ])('keeps the countdown at %i ms clear', (t, phase, shout) => {
     const view = push(createRound([{ kind: 'inhale', ms: 8000 }]), { ...room, t })
     expect(view.phase).toBe(phase)
@@ -95,11 +97,11 @@ describe('championship copy', () => {
 
   it('changes the cue as the bull moves from voice to inhale', () => {
     const round = ready([{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 7000 }])
-    walk(round, 500, 3300, {})
-    const voice = push(round, { ...room, t: 3399 })
+    walk(round, 500, start + 900, {})
+    const voice = push(round, { ...room, t: start + 999 })
     expect(voice.shout).toBe('Приготовься…')
     expect(voice.hint).toBe('Скоро твой выход. Жди сигнала.')
-    const inhale = push(round, { ...room, t: 3400, hold: true })
+    const inhale = push(round, { ...room, t: start + 1000, hold: true })
     expect(inhale.shout).toBe('Держи!')
     expect(inhale.hint).toBe('Продолжай «му-у-у» до конца полоски.')
   })
@@ -133,78 +135,78 @@ describe('championship copy', () => {
 describe('championship air', () => {
   function champion(airMs = 1000, segments: Segment[] = [{ kind: 'inhale', ms: 8000 }]): Round {
     const round = createRound(segments, { airMs, recoveryRate: 2, recoverAt: 0.4, bullForce: 0.8 })
-    walk(round, 0, 2400, {})
+    walk(round, 0, start, {})
     return round
   }
 
   it('keeps daily rounds unlimited and starts championship air full after countdown', () => {
     expect(push(createRound([{ kind: 'voice', ms: 8000 }]), room).air).toBeNull()
     const round = champion()
-    expect(push(round, { ...room, t: 2400 }).air).toBe(1)
-    expect(push(round, { ...room, t: 2400 }).exhausted).toBe(false)
+    expect(push(round, { ...room, t: start }).air).toBe(1)
+    expect(push(round, { ...room, t: start }).exhausted).toBe(false)
   })
 
   it('exhausts on continuous input and requires a real pause to recover', () => {
     const round = champion()
-    walk(round, 2500, 3400, { hold: true })
-    const empty = push(round, { ...room, t: 3400, hold: true })
+    walk(round, start + 100, start + 1000, { hold: true })
+    const empty = push(round, { ...room, t: start + 1000, hold: true })
     expect(empty.air).toBe(0)
     expect(empty.exhausted).toBe(true)
     expect(empty.youHot).toBe(false)
-    walk(round, 3500, 4000, { hold: true })
-    expect(push(round, { ...room, t: 4000, hold: true }).air).toBe(0)
-    const early = push(round, { ...room, t: 4100 })
+    walk(round, start + 1100, start + 1600, { hold: true })
+    expect(push(round, { ...room, t: start + 1600, hold: true }).air).toBe(0)
+    const early = push(round, { ...room, t: start + 1700 })
     expect(early.air).toBeCloseTo(0.2)
     expect(early.exhausted).toBe(true)
-    const recovered = push(round, { ...room, t: 4200 })
+    const recovered = push(round, { ...room, t: start + 1800 })
     expect(recovered.air).toBeCloseTo(0.4)
     expect(recovered.exhausted).toBe(false)
-    const resumed = push(round, { ...room, t: 4300, hold: true })
+    const resumed = push(round, { ...room, t: start + 1900, hold: true })
     expect(resumed.youHot).toBe(true)
     expect(resumed.air).toBeCloseTo(0.3)
   })
 
   it('counts only available air when depletion falls inside a frame', () => {
     const round = champion(250)
-    walk(round, 2500, 2700, { hold: true })
+    walk(round, start + 100, start + 300, { hold: true })
     expect(round.pull).toBeCloseTo(308.7)
-    expect(push(round, { ...room, t: 2700, hold: true }).air).toBe(0)
+    expect(push(round, { ...room, t: start + 300, hold: true }).air).toBe(0)
   })
 
   it('cannot refill by shouting a non-moo', () => {
     const round = champion()
-    walk(round, 2500, 3400, { db: -8 })
-    const view = push(round, { ...room, t: 3400, db: -8 })
+    walk(round, start + 100, start + 1000, { db: -8 })
+    const view = push(round, { ...room, t: start + 1000, db: -8 })
     expect(view.air).toBe(0)
     expect(view.youHot).toBe(false)
     expect(round.pull).toBeCloseTo(-96)
-    walk(round, 3500, 4000, { db: -8 })
-    expect(push(round, { ...room, t: 4000, db: -8 }).air).toBe(0)
+    walk(round, start + 1100, start + 1600, { db: -8 })
+    expect(push(round, { ...room, t: start + 1600, db: -8 }).air).toBe(0)
   })
 
   it('treats a recognized microphone moo and holding identically', () => {
     const mic = champion()
     const button = champion()
-    walk(mic, 2500, 3000, { db: -20, moo: true })
-    walk(button, 2500, 3000, { hold: true })
+    walk(mic, start + 100, start + 600, { db: -20, moo: true })
+    walk(button, start + 100, start + 600, { hold: true })
     expect(mic.pull).toBeCloseTo(button.pull)
-    expect(push(mic, { ...room, t: 3000, db: -20, moo: true }).air).toBeCloseTo(0.4)
+    expect(push(mic, { ...room, t: start + 600, db: -20, moo: true }).air).toBeCloseTo(0.4)
   })
 
   it('caps recovery and does not drain air during the countdown or a suspended frame', () => {
     const round = createRound([{ kind: 'inhale', ms: 8000 }], { airMs: 1000, recoveryRate: 2, recoverAt: 0.4, bullForce: 0.8 })
-    walk(round, 0, 2300, { hold: true })
-    expect(push(round, { ...room, t: 2300, hold: true }).air).toBe(1)
-    expect(push(round, { ...room, t: 3000, hold: true }).air).toBe(1)
-    walk(round, 3100, 3500, {})
-    expect(push(round, { ...room, t: 3500 }).air).toBe(1)
+    walk(round, 0, start - 100, { hold: true })
+    expect(push(round, { ...room, t: start - 100, hold: true }).air).toBe(1)
+    expect(push(round, { ...room, t: start + 600, hold: true }).air).toBe(1)
+    walk(round, start + 700, start + 1100, {})
+    expect(push(round, { ...room, t: start + 1100 }).air).toBe(1)
   })
 
   it('is independent of frame partitioning through a breath boundary', () => {
     const results = [10, 25, 100].map(step => {
       const round = champion(750, [{ kind: 'voice', ms: 425 }, { kind: 'inhale', ms: 7575 }])
-      for (let t = 2400 + step; t <= 4400; t += step) push(round, { ...room, t, hold: true })
-      return { pull: round.pull, air: push(round, { ...room, t: 4400, hold: true }).air }
+      for (let t = start + step; t <= start + 2000; t += step) push(round, { ...room, t, hold: true })
+      return { pull: round.pull, air: push(round, { ...room, t: start + 2000, hold: true }).air }
     })
     expect(results[0].air).toBe(0)
     for (const result of results) {
@@ -218,7 +220,7 @@ describe('championship air', () => {
       const round = createRound(stage.bull.segments, stage.rules)
       let view = push(round, room)
       for (let t = 10; t <= ROUND_MS; t += 10) {
-        const hold = t >= 2400 && (!timed || t >= 2550 && breathAt(stage.bull.segments, t - 2550) === 'inhale')
+        const hold = t >= start && (!timed || t >= start + 150 && breathAt(stage.bull.segments, t - start - 150) === 'inhale')
         view = push(round, { ...room, t, hold })
         if (view.phase === 'done') break
       }
@@ -238,10 +240,10 @@ describe('inhale animation timing', () => {
   ]
 
   it.each([
-    [0, null], [2300, null], [2400, null], [3399, null],
-    [3400, 0], [4000, 0.5], [4599, 1199 / 1200],
-    [4600, null], [5399, null], [5400, 0], [7900, 0.5],
-    [10399, 4999 / 5000], [10400, null],
+    [0, null], [start - 100, null], [start, null], [start + 999, null],
+    [start + 1000, 0], [start + 1600, 0.5], [start + 2199, 1199 / 1200],
+    [start + 2200, null], [start + 2999, null], [start + 3000, 0], [start + 5500, 0.5],
+    [start + 7999, 4999 / 5000], [start + 8000, null],
   ])('reports inhale progress at %i ms without leaking into other phases', (t, expected) => {
     const round = createRound(segments)
     walk(round, 0, Math.floor(t / 100) * 100, {})
@@ -252,7 +254,7 @@ describe('inhale animation timing', () => {
 
   it('does not animate a nonexistent inhale in an empty schedule', () => {
     const round = createRound([])
-    expect(push(round, { ...room, t: 3000 }).inhale).toBeNull()
+    expect(push(round, { ...room, t: start + 600 }).inhale).toBeNull()
   })
 })
 
@@ -260,9 +262,9 @@ describe('voice pressure and knockout', () => {
   it.each(['voice', 'inhale'] as const)('uses recognized moo loudness during %s without rewarding other loud sounds', kind => {
     const play = (db: number, moo: boolean) => {
       const round = ready([{ kind, ms: 8000 }])
-      walk(round, 500, 2400, {})
-      walk(round, 2500, 3000, { db, moo })
-      return push(round, { ...room, t: 3000, db, moo })
+      walk(round, 500, start, {})
+      walk(round, start + 100, start + 600, { db, moo })
+      return push(round, { ...room, t: start + 600, db, moo })
     }
     const quiet = play(-60, false)
     const soft = play(-35, true)
@@ -282,10 +284,10 @@ describe('voice pressure and knockout', () => {
   it('requires the extra voice gate while allowing a softer moo on an inhale', () => {
     for (const kind of ['voice', 'inhale'] as const) {
       const round = ready([{ kind, ms: 8000 }])
-      walk(round, 500, 2400, {})
-      const below = push(round, { ...room, t: 2500, db: -38, moo: true })
+      walk(round, 500, start, {})
+      const below = push(round, { ...room, t: start + 100, db: -38, moo: true })
       expect(below.youHot).toBe(kind === 'inhale')
-      const boundary = push(round, { ...room, t: 2600, db: -37, moo: true })
+      const boundary = push(round, { ...room, t: start + 200, db: -37, moo: true })
       expect(boundary.youHot).toBe(true)
       expect(boundary.youPower).toBeCloseTo(0.558)
     }
@@ -293,14 +295,14 @@ describe('voice pressure and knockout', () => {
 
   it.each([1, -1])('announces a knockout on side %i at the crossing, then freezes the result', side => {
     const round = createRound([{ kind: side > 0 ? 'inhale' : 'voice', ms: 8000 }])
-    walk(round, 0, 2400, {})
+    walk(round, 0, start, {})
     round.pull = side * (KO_PULL_MS - 12.3)
-    const view = push(round, { ...room, t: 2500, hold: side > 0 })
+    const view = push(round, { ...room, t: start + 100, hold: side > 0 })
     expect(view.finish).toBe('knockout')
     expect(view.phase).toBe('done')
     expect(view.shout).toBe('Нокаут!')
     expect(view.tug).toBe(side)
-    expect(view.elapsed).toBeCloseTo(2400 + 12.3 / (side > 0 ? 1.23 : 1))
+    expect(view.elapsed).toBeCloseTo(start + 12.3 / (side > 0 ? 1.23 : 1))
     expect(view.youPower).toBe(0)
     expect(view.bullPower).toBe(0)
     expect(push(round, { ...room, t: ROUND_MS, hold: true })).toEqual(view)
@@ -322,10 +324,10 @@ describe('voice pressure and knockout', () => {
   it('uses bull loudness for both opposing pull and the visible voice level', () => {
     const results = [0.6, 0.9].map(bullForce => {
       const round = createRound([{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 7000 }], { airMs: 1000, recoveryRate: 2, recoverAt: 0.4, bullForce })
-      walk(round, 0, 3000, {})
-      const voice = push(round, { ...room, t: 3000 })
-      walk(round, 3100, 3400, {})
-      expect(push(round, { ...room, t: 3400 }).bullPower).toBe(0)
+      walk(round, 0, start + 600, {})
+      const voice = push(round, { ...room, t: start + 600 })
+      walk(round, start + 700, start + 1000, {})
+      expect(push(round, { ...room, t: start + 1000 }).bullPower).toBe(0)
       return voice
     })
     expect(results[0].tug).toBeCloseTo(-360 / KO_PULL_MS)
@@ -336,13 +338,13 @@ describe('voice pressure and knockout', () => {
   it('keeps knockout timing identical when frames split across air depletion', () => {
     const results = [10, 25, 100].map(step => {
       const round = createRound([{ kind: 'voice', ms: 8000 }], { airMs: 125, recoveryRate: 2, recoverAt: 0.4, bullForce: 1 })
-      walk(round, 0, 2400, {})
+      walk(round, 0, start, {})
       round.pull = -KO_PULL_MS + 300
-      let view = push(round, { ...room, t: 2400 })
-      for (let t = 2400 + step; t <= 3400 && view.phase !== 'done'; t += step) view = push(round, { ...room, t, hold: true })
+      let view = push(round, { ...room, t: start })
+      for (let t = start + step; t <= start + 1000 && view.phase !== 'done'; t += step) view = push(round, { ...room, t, hold: true })
       expect(view.finish).toBe('knockout')
       expect(view.air).toBe(0)
-      expect(view.elapsed).toBeCloseTo(2790, 6)
+      expect(view.elapsed).toBeCloseTo(start + 390, 6)
       return { tug: view.tug, air: view.air, finish: view.finish }
     })
     expect(results[1]).toEqual(results[0])
@@ -351,11 +353,11 @@ describe('voice pressure and knockout', () => {
 
   it('stops air consumption at a knockout inside a frame', () => {
     const round = createRound([{ kind: 'inhale', ms: 8000 }], { airMs: 1000, recoveryRate: 2, recoverAt: 0.4, bullForce: 1 })
-    walk(round, 0, 2400, {})
+    walk(round, 0, start, {})
     round.pull = KO_PULL_MS - 12.3
-    const view = push(round, { ...room, t: 2500, hold: true })
+    const view = push(round, { ...room, t: start + 100, hold: true })
     expect(view.air).toBeCloseTo(0.99)
-    expect(view.elapsed).toBeCloseTo(2410)
+    expect(view.elapsed).toBeCloseTo(start + 10)
   })
 })
 
@@ -375,7 +377,7 @@ describe('late championship knockout threat', () => {
 describe('remaining bull inhale time', () => {
   const segments: Segment[] = [{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 1200 }, { kind: 'voice', ms: 800 }, { kind: 'inhale', ms: 5000 }]
 
-  it.each([[0, null], [2399, null], [2400, null], [3399, null], [3400, 1200], [4000, 600], [4599, 1], [4600, null], [5400, 5000], [10399, 1], [10400, null]] as const)('reports the real remaining window at %i ms', (t, expected) => {
+  it.each([[0, null], [start - 1, null], [start, null], [start + 999, null], [start + 1000, 1200], [start + 1600, 600], [start + 2199, 1], [start + 2200, null], [start + 3000, 5000], [start + 7999, 1], [start + 8000, null]] as const)('reports the real remaining window at %i ms', (t, expected) => {
     const round = createRound(segments)
     walk(round, 0, Math.floor(t / 100) * 100, {})
     const view = push(round, { ...room, t })
@@ -384,9 +386,9 @@ describe('remaining bull inhale time', () => {
 
   it('has no pending inhale after knockout or for an empty schedule', () => {
     const round = ready([{ kind: 'inhale', ms: 8000 }])
-    walk(round, 500, 2400, {})
+    walk(round, 500, start, {})
     round.pull = KO_PULL_MS - 10
-    expect(push(round, { ...room, t: 2500, hold: true }).inhaleRemaining).toBeNull()
-    expect(push(createRound([]), { ...room, t: 3000 }).inhaleRemaining).toBeNull()
+    expect(push(round, { ...room, t: start + 100, hold: true }).inhaleRemaining).toBeNull()
+    expect(push(createRound([]), { ...room, t: start + 600 }).inhaleRemaining).toBeNull()
   })
 })
