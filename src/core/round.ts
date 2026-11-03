@@ -167,15 +167,15 @@ function shoutOf(phase: View['phase'], breath: View['breath'], t: number): strin
     return '1'
   }
   if (phase === 'listen' && breath === 'inhale') return 'Мычи: мууу'
-  if (phase === 'listen') return 'Его'
+  if (phase === 'listen') return 'Бынич'
   return 'Ко'
 }
 
 function hintOf(phase: View['phase'], breath: View['breath']): string {
-  if (phase === 'hush' || phase === 'invite') return 'Молчи до сигнала.'
-  if (phase === 'listen' && breath === 'inhale') return 'Его вдох. Мычи.'
-  if (phase === 'listen') return 'Он тянет. Шкала едет к нему.'
-  return 'Ещё раз.'
+  if (phase === 'hush' || phase === 'invite') return 'Тихо до сигнала.'
+  if (phase === 'listen' && breath === 'inhale') return 'Он набирает воздух.'
+  if (phase === 'listen') return 'Шкала идёт к нему.'
+  return 'Можно ещё раз.'
 }
 
 function touchFaces(round: Round, sample: Sample): void {

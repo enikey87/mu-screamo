@@ -36,8 +36,13 @@ let micBlocked = false
 let round: Round | null = null
 let bull = dailyBull(new Date())
 let origin = 0
+const dayLine = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
 
-dateLabel.textContent = `${bull.label} · дневной бык`
+function showDay(date: Date): void {
+  dateLabel.textContent = dayLine.format(date)
+}
+
+showDay(new Date())
 
 go.addEventListener('pointerdown', (event) => {
   if (audio?.state === 'suspended') void audio.resume()
@@ -81,8 +86,9 @@ async function start(): Promise<void> {
   await resumed
   mic = await opened
   if (ctx.state !== 'running') await ctx.resume().catch(() => undefined)
-  bull = dailyBull(new Date())
-  dateLabel.textContent = `${bull.label} · дневной бык`
+  const today = new Date()
+  bull = dailyBull(today)
+  showDay(today)
   round = createRound(bull.segments)
   origin = ctx.currentTime
   stopCount = playCountdown(ctx, origin)
