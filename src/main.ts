@@ -2,6 +2,7 @@ import { analyzeFrame } from './core/analyze'
 import { championshipStage, loadProgress, saveProgress, STAGES, winStage } from './core/championship'
 import { dailyBull } from './core/daily'
 import { createRound, push, type Round, type View } from './core/round'
+import { startWith, tossStarter, type Starter } from './core/turn'
 import { HUSH_MS, INVITE_MS, ROUND_MS } from './core/timing'
 import { playCountdown } from './audio/count'
 import { openMic, type Mic } from './audio/mic'
@@ -42,12 +43,19 @@ const airFill = required<HTMLElement>('#air-fill')
 const airLabel = required<HTMLElement>('#air-label')
 const championSeal = required<HTMLElement>('#champion-seal')
 const saveNotice = required<HTMLElement>('#save-notice')
+const coin = required<HTMLElement>('#coin-toss')
+const breathCue = required<HTMLElement>('#breath-cue')
+const breathMeter = required<HTMLElement>('#bull-breath-meter')
+const breathFill = required<HTMLElement>('#bull-breath-fill')
+const breathLabel = required<HTMLElement>('#bull-breath-label')
 
 let audio: AudioContext | null = null
 let mic: Mic | null = null
 let stopVoice: (() => void) | null = null
 let stopCount: (() => void) | null = null
 let stopOutput: (() => void) | null = null
+let cancelToss: (() => void) | null = null
+let starter: Starter = 'bull'
 let frame = 0
 let bout = 0
 let running = false
@@ -84,13 +92,10 @@ function showPath(): void {
   })
 }
 
-function preview(): void {
-  bout += 1
-  release()
-  round = null
-  wonStage = false
+function resetArena(): void {
   delete app.dataset.phase
   delete app.dataset.breath
+  delete app.dataset.starter
   delete app.dataset.finish
   delete app.dataset.echoCancellation
   app.dataset.mode = mode
@@ -108,6 +113,19 @@ function preview(): void {
   scoreboard.hidden = true
   championSeal.hidden = true
   air.hidden = true
+  breathCue.classList.remove('is-ready')
+  breathMeter.setAttribute('aria-valuenow', '0')
+  breathMeter.setAttribute('aria-valuetext', '')
+  breathFill.style.transform = 'scaleX(0)'
+  breathLabel.textContent = ''
+}
+
+function preview(): void {
+  bout += 1
+  release()
+  round = null
+  wonStage = false
+  resetArena()
   go.hidden = false
   go.disabled = false
   dateLabel.hidden = mode === 'championship'
@@ -201,10 +219,18 @@ async function start(): Promise<void> {
   if (running) return
   const id = ++bout
   release()
+  resetArena()
+  round = null
   running = true
   holding = false
+  const today = new Date()
+  const stage = mode === 'championship' ? championshipStage(stageIndex) : null
+  starter = tossStarter(Math.random())
+  bull = startWith(stage?.bull ?? dailyBull(today), starter)
+  showDay(today)
+  const coinReady = animateCoin(id, starter)
   go.disabled = true
-  go.textContent = 'Включаем микрофон…'
+  go.textContent = 'Готовимся к бою…'
   showPath()
   const ctx = context()
   unlock(ctx)
@@ -226,10 +252,9 @@ async function start(): Promise<void> {
   app.dataset.echoCancellation = mic ? String(echoProtected) : 'unavailable'
   if (ctx.state !== 'running') await ctx.resume().catch(() => undefined)
   if (id !== bout) return
-  const today = new Date()
-  const stage = mode === 'championship' ? championshipStage(stageIndex) : null
-  bull = stage?.bull ?? dailyBull(today)
-  showDay(today)
+  await coinReady
+  if (id !== bout) return
+  coin.hidden = true
   round = createRound(bull.segments, stage?.rules)
   origin = ctx.currentTime
   stopCount = playCountdown(ctx, origin, playback?.destination)
@@ -243,6 +268,35 @@ async function start(): Promise<void> {
   render(push(round, { t: 0, db: -90, moo: false, hold: false }))
   if (!mic && go.matches(':active')) holding = true
   frame = requestAnimationFrame(loop)
+}
+
+function animateCoin(id: number, first: Starter): Promise<void> {
+  app.dataset.phase = 'toss'
+  app.dataset.starter = first
+  coin.dataset.settled = 'false'
+  coin.style.setProperty('--coin-stop', first === 'you' ? '1440deg' : '1620deg')
+  void coin.offsetWidth
+  coin.hidden = false
+  callout.textContent = 'Бросаем монетку.'
+  hint.textContent = 'Сейчас решим, кто начнёт.'
+  return new Promise(resolve => {
+    const reveal = window.setTimeout(() => {
+      if (id !== bout) return
+      coin.dataset.settled = 'true'
+      callout.textContent = first === 'you' ? 'Первым мычишь ты!' : 'Первым мычит Бынич!'
+      hint.textContent = first === 'you' ? 'Бынич начнёт со вдоха. Жди сигнала.' : 'Дождись вдоха Бынича — тогда твой выход.'
+    }, 900)
+    const ready = window.setTimeout(() => {
+      if (id === bout) cancelToss = null
+      resolve()
+    }, 1800)
+    cancelToss = () => {
+      window.clearTimeout(reveal)
+      window.clearTimeout(ready)
+      cancelToss = null
+      resolve()
+    }
+  })
 }
 
 function loop(): void {
@@ -335,7 +389,17 @@ function render(view: View): void {
     void callout.offsetWidth
     callout.classList.add('is-pop')
   }
-  hint.textContent = view.hint
+  hint.textContent = view.phase === 'hush' || view.phase === 'invite'
+    ? `${starter === 'you' ? 'Первым мычишь ты' : 'Первым мычит Бынич'}. Жди сигнала.` : view.hint
+  const inhale = view.inhale ?? 0
+  breathFill.style.transform = `scaleX(${inhale})`
+  breathMeter.setAttribute('aria-valuenow', String(Math.floor(inhale * 100)))
+  breathCue.classList.toggle('is-ready', inhale >= .8)
+  const remaining = view.inhaleRemaining
+  const seconds = remaining === null ? '' : (Math.ceil(remaining / 100) / 10).toFixed(1).replace('.', ',')
+  breathLabel.textContent = remaining === null ? ''
+    : `${view.elapsed + remaining >= ROUND_MS ? 'Финиш через' : 'До «му»'} ${seconds} с`
+  breathMeter.setAttribute('aria-valuetext', breathLabel.textContent)
   air.hidden = view.air === null
   if (view.air !== null) {
     airFill.style.transform = `scaleX(${view.air})`
@@ -365,6 +429,8 @@ function context(): AudioContext {
 }
 
 function release(): void {
+  cancelToss?.()
+  coin.hidden = true
   running = false
   holding = false
   if (frame) cancelAnimationFrame(frame)
