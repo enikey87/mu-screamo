@@ -99,8 +99,9 @@ function preview(): void {
   app.style.setProperty('--inhale', '0')
   advantage.textContent = 'Равные силы'
   for (const fighter of [youFighter, bullFighter]) {
-    fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling')
+    fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling', 'is-scared')
     fighter.style.setProperty('--power', '0')
+    fighter.style.setProperty('--fear', '0')
   }
   for (const face of [youBull, bullBull]) face.classList.remove('is-fierce', 'is-pleased', 'is-puzzled')
   callout.classList.remove('is-count', 'is-pop')
@@ -311,6 +312,12 @@ function render(view: View): void {
     : yours ? 'Ты ведёшь' : his ? 'Бынич ведёт' : 'Равные силы'
   youFighter.style.setProperty('--power', String(view.youPower / 1.5))
   bullFighter.style.setProperty('--power', String(view.bullPower / 1.5))
+  const yourFear = view.phase === 'listen' ? view.bullPower / 1.5 : 0
+  const bullFear = view.phase === 'listen' ? view.youPower / 1.5 : 0
+  youFighter.style.setProperty('--fear', String(yourFear))
+  bullFighter.style.setProperty('--fear', String(bullFear))
+  youFighter.classList.toggle('is-scared', yourFear > 0)
+  bullFighter.classList.toggle('is-scared', bullFear > 0)
   youFighter.classList.toggle('is-hot', view.youHot)
   bullFighter.classList.toggle('is-hot', view.bullHot)
   youFighter.classList.toggle('is-lose', view.phase === 'done' && his)

@@ -118,6 +118,29 @@ async function checkInhale(reduced = false) {
   }
 }
 
+async function assertFear(you, bull) {
+  const actual = await evaluate(`['you', 'bull'].map(side => {
+    const fighter = document.querySelector('#fighter-' + side);
+    return { level: Number(fighter.style.getPropertyValue('--fear')), scared: fighter.classList.contains('is-scared') };
+  })`)
+  for (const [index, expected] of [you, bull].entries()) {
+    assert.ok(Math.abs(actual[index].level - expected) < .001, `opponent fear level: ${JSON.stringify(actual)}, expected ${you}, ${bull}`)
+    assert.equal(actual[index].scared, expected > 0)
+  }
+}
+
+async function fearDisplacement(side) {
+  return evaluate(`(() => {
+    const bull = document.querySelector('#fighter-${side} .bull');
+    const animation = bull.getAnimations().find(animation => animation.animationName === 'tremble');
+    if (!animation) return null;
+    animation.pause(); animation.currentTime = Number(animation.effect.getTiming().duration) * .25;
+    const style = getComputedStyle(bull);
+    const displacement = { x: Math.abs(parseFloat(style.translate)), angle: Math.abs(parseFloat(style.rotate)) };
+    animation.play(); return displacement;
+  })()`)
+}
+
 const state = () => evaluate(`({
   phase: document.querySelector('#app').dataset.phase,
   finish: document.querySelector('#app').dataset.finish,
@@ -177,6 +200,34 @@ try {
     localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 5 }));
   ` })
   await loaded(`${url}#championship`)
+  const atlas = await evaluate(`(async () => {
+    const sprite = document.querySelector('.bull__championship');
+    const source = getComputedStyle(sprite).backgroundImage.slice(4, -1).replaceAll('"', '');
+    const image = new Image(); image.src = source; await image.decode();
+    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const w = canvas.width / 4, h = canvas.height / 2, frames = [];
+    for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
+      let edge = 0, content = 0, clipped = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const alpha = pixels[((row * h + y) * canvas.width + col * w + x) * 4 + 3];
+        if (x < 24 || x >= w - 24 || y < 24 || y >= h - 24) edge = Math.max(edge, alpha);
+        else if (alpha > 200) content++;
+        if (alpha > 24 && (x < 50 || x >= 334 || y < 66 || y >= 446)) clipped++;
+      }
+      frames.push({ row, col, edge, content, clipped });
+    }
+    return { width: canvas.width, height: canvas.height, frames };
+  })()`)
+  assert.equal(atlas.width, 1536); assert.equal(atlas.height, 1024)
+  assert.equal(atlas.frames.length, 8)
+  for (const frame of atlas.frames) {
+    assert.equal(frame.clipped, 0, `bull anatomy and steam must fit the visible source window: ${JSON.stringify(frame)}`)
+    assert.ok(frame.edge <= 4, `sprite must have clear gutters: ${JSON.stringify(frame)}`)
+    assert.ok(frame.content > 15000, `sprite must retain visible colored artwork: ${JSON.stringify(frame)}`)
+  }
+  console.log('PASS: all eight championship sprites have empty gutters and complete visible content')
   await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
   for (const stage of [0, 1, 2, 3, 4, 2, 0, 4]) {
     await evaluate(`document.querySelector('.stage-step[data-stage="${stage}"]').click()`)
@@ -200,11 +251,12 @@ try {
           fighter.classList.toggle('is-inhaling', pose === 'inhale');
           bull.classList.toggle('is-fierce', pose === 'voice');
           you.classList.toggle('is-hot', pose !== 'ready');
+          for (const actor of [fighter, you]) { actor.classList.add('is-scared'); actor.style.setProperty('--fear', '1'); }
           app.style.setProperty('--inhale', pose === 'inhale' ? '1' : '0');
           for (const pull of [-0.99, 0, 0.99]) {
             app.style.setProperty('--tug', String(pull));
-            for (const progress of [0, 0.32, 0.68]) {
-              for (const body of document.querySelectorAll('.fighter__body')) {
+            for (const progress of [0, 0.25, 0.32, 0.5, 0.68, 0.75]) {
+              for (const body of document.querySelectorAll('.fighter__body, .bull')) {
                 const duration = parseFloat(getComputedStyle(body).animationDuration) * 1000;
                 for (const animation of body.getAnimations()) {
                   animation.pause();
@@ -369,7 +421,9 @@ try {
   await assertAdvantage('even', 'Равные силы')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
   await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1 }))`)
+  await assertFear(0, 0)
   await until(async () => (await state()).phase === 'listen', 'countdown to play')
+  await assertFear(2 / 3, 2 / 3)
   for (const [width, height] of [[320, 568], [375, 667]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
     const layout = await evaluate(`(() => {
@@ -384,6 +438,8 @@ try {
     assert.ok(layout.hintBottom < layout.buttonTop && layout.meterBottom < layout.hintTop, 'controls and instructions must not overlap')
   }
   await checkInhale(true)
+  await assertFear(0, 2 / 3)
+  assert.ok((await fearDisplacement('bull'))?.x > 0, 'bull must visibly tremble during its inhale')
   await screenshot('daily-inhale')
   await until(async () => (await state()).phase === 'listen' && (await state()).meter > 8, 'player takes the lead')
   await assertAdvantage('you', 'Ты ведёшь')
@@ -394,17 +450,22 @@ try {
   await until(async () => (await state()).button === 'Ещё раунд ↗', 'replay after win')
   await assertAdvantage('you', (await state()).finish === 'knockout' ? 'Ты победил нокаутом' : 'Ты победил')
   assert.equal(await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-inhaling')`), false)
+  await assertFear(0, 0)
+  assert.equal(await fearDisplacement('bull'), null)
   await screenshot('win')
   console.log('PASS: permission pending → denied → countdown → hold → win → replay')
 
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).phase === 'hush', 'replay resets round')
   assert.equal((await state()).meter, 0)
+  await assertFear(0, 0)
   assert.equal((await state()).loser, undefined)
   assert.equal((await state()).requests, 1)
   await assertAdvantage('even', 'Равные силы')
   await until(async () => (await state()).phase === 'listen' && (await state()).meter < -8, 'bull takes the lead')
   await assertAdvantage('bull', 'Бынич ведёт')
+  await assertFear(2 / 3, 0)
+  assert.ok((await fearDisplacement('you'))?.x > 0, 'player must visibly tremble from the bull voice')
   await until(async () => (await state()).phase === 'done', 'unheld button loses')
   assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : 'Раунд за Быничем.')
   assert.equal((await state()).loser, 'fighter-you')
@@ -449,9 +510,25 @@ try {
       await evaluate(`window.__voiceLevel.gain.value = 0.025`)
       await until(() => evaluate(`Number(document.querySelector('#fighter-you').style.getPropertyValue('--power')) > .1`), 'soft moo produces a visible level')
       const soft = await evaluate(`Number(document.querySelector('#fighter-you').style.getPropertyValue('--power'))`)
+      const softShake = await fearDisplacement('bull')
+      assert.ok(softShake?.x > 0 && softShake?.angle > 0)
       await evaluate(`window.__voiceLevel.gain.value = 0.7`)
       await until(() => evaluate(`Number(document.querySelector('#fighter-you').style.getPropertyValue('--power')) > ${soft + .1}`), 'louder moo increases visible pressure')
-    } else await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+      const loudShake = await fearDisplacement('bull')
+      assert.ok(loudShake.x > softShake.x + .2 && loudShake.angle > softShake.angle, 'louder moo must produce a larger visible tremble at the same animation phase')
+      await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+      assert.deepEqual(await evaluate(`(() => { const style = getComputedStyle(document.querySelector('#bull-bull')); return [style.animationName, style.translate, style.rotate]; })()`), ['none', 'none', 'none'])
+      await call('Emulation.setEmulatedMedia', { features: [] })
+      await evaluate(`window.__voiceLevel.gain.value = 0`)
+      await until(() => evaluate(`!document.querySelector('#fighter-bull').classList.contains('is-scared')`), 'silence stops opponent fear')
+      assert.equal(await fearDisplacement('bull'), null)
+      await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+
+    } else {
+      await evaluate(`window.__voiceLevel.gain.value = 0.7`)
+      await pause(150)
+      assert.equal(await fearDisplacement('bull'), null, 'loud non-moo must not scare the opponent')
+    }
 
     await until(async () => (await state()).phase === 'done', `distorted ${vowel} audio round`)
     assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : vowel === 'u' ? 'Луг за тобой.' : 'Раунд за Быничем.')
@@ -463,6 +540,7 @@ try {
       assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#fighter-bull')).animationName`), 'none')
       await screenshot('knockout')
     }
+    await assertFear(0, 0)
     assert.equal(await evaluate(`window.__echoPeers.every(p => p.connectionState === 'closed') && window.__gameTracks.length === 1 && window.__gameTracks.every(t => t.readyState === 'ended') && !document.querySelector('audio[data-echo-reference]')`), true)
     assert.equal(await evaluate(`window.__voiceTracks.every(track => track.readyState === 'ended')`), true)
     await evaluate(`window.__voiceContext.close()`)
@@ -558,6 +636,7 @@ try {
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
   assert.equal(await evaluate(`document.querySelector('#air').hidden`), true)
   assert.equal(await evaluate(`localStorage.getItem('bynich.championship.v1')`), null)
+  await assertFear(0, 0)
   console.log('PASS: changing modes stops an active microphone and grants no campaign progress')
 
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
@@ -634,7 +713,7 @@ try {
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
     if (stage > 0) {
       assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).display`), 'block')
-      const alphaAtlas = await evaluate(`fetch(new URL('art/bull-championship.webp', location.href)).then(r => r.ok)`)
+      const alphaAtlas = await evaluate(`fetch(new URL('art/bull-championship-isolated.webp', location.href)).then(r => r.ok)`)
       assert.equal(alphaAtlas, true)
       assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).filter`), 'none')
     }
@@ -659,6 +738,7 @@ try {
   await evaluate(`document.querySelector('#go').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3 }))`)
   await until(() => evaluate(`document.querySelector('#app').classList.contains('is-exhausted')`), 'continuous input exhausts air')
   assert.equal((await state()).title, 'Вдохни.')
+  assert.equal(await fearDisplacement('bull'), null, 'an exhausted moo must not scare the opponent')
   assert.equal(await evaluate(`document.querySelector('.air__track').getAttribute('aria-valuenow')`), '0')
   await campaignLayout(320, 568, 'championship-exhausted-small')
   await until(async () => (await state()).phase === 'done', 'continuous input loses hard encounter')
