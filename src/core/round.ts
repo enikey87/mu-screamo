@@ -1,3 +1,4 @@
+import { playerPower } from './voice-power'
 import { breathAt, segmentEndOffset, type Segment } from './daily'
 import {
   HUSH_MS,
@@ -33,10 +34,13 @@ export interface RoundRules {
 
 export interface View {
   phase: 'hush' | 'invite' | 'listen' | 'done'
+  finish: 'knockout' | 'time' | null
   breath: 'hush' | 'bait' | 'voice' | 'inhale'
   shout: string
   youHot: boolean
   bullHot: boolean
+  youPower: number
+  bullPower: number
   hint: string
   /** −1 бык забрал канат, +1 забрал игрок */
   tug: number
@@ -60,7 +64,10 @@ export interface Round {
   pull: number
   youHot: boolean
   bullHot: boolean
+  youPower: number
+  bullPower: number
   finished: boolean
+  finish: View['finish']
   rules: RoundRules | null
   airMs: number
   exhausted: boolean
@@ -77,7 +84,10 @@ export function createRound(segments: Segment[], rules?: RoundRules): Round {
     pull: 0,
     youHot: false,
     bullHot: false,
+    youPower: 0,
+    bullPower: 0,
     finished: false,
+    finish: null,
     rules: rules ?? null,
     airMs: rules?.airMs ?? 0,
     exhausted: false,
@@ -85,12 +95,12 @@ export function createRound(segments: Segment[], rules?: RoundRules): Round {
 }
 
 export function push(round: Round, sample: Sample): View {
-  if (round.finished) return viewOf(round, ROUND_MS)
+  if (round.finished) return viewOf(round, round.lastT)
   const from = round.lastT
   const to = Math.max(from, sample.t)
   if (to - from > MAX_STEP_MS) {
-    round.lastT = to
-    if (to >= ROUND_MS) round.finished = true
+    round.lastT = Math.min(to, ROUND_MS)
+    if (to >= ROUND_MS) { round.finished = true; round.finish = 'time' }
     touchFaces(round, sample)
     return viewOf(round, to)
   }
@@ -119,27 +129,36 @@ export function push(round: Round, sample: Sample): View {
     const kind = breathAt(round.segments, offset)
     const segEnd = LISTEN_START + segmentEndOffset(round.segments, offset)
     const sliceEnd = Math.min(end, segEnd)
-    const slice = sliceEnd - cursor
+    let slice = sliceEnd - cursor
     if (slice <= 0) break
     const loud = sample.db >= round.threshold
     const gated = sample.db >= round.threshold + VOICE_GATE_DB
     const counts = sample.hold || (kind === 'inhale' ? sample.moo && loud : sample.moo && gated)
-    const player = counts ? (kind === 'inhale' ? INHALE_PLAYER : VOICE_PLAYER) : 0
+    const speaking = sample.hold || loud
+    if (round.rules && speaking && !round.exhausted) slice = Math.min(slice, round.airMs)
+    const power = sample.hold ? 1 : playerPower(sample.db, round.threshold)
+    const player = counts && !round.exhausted ? power * (kind === 'inhale' ? INHALE_PLAYER : VOICE_PLAYER) : 0
     const bull = (kind === 'inhale' ? INHALE_BULL : VOICE_BULL) * (round.rules?.bullForce ?? 1)
-    const activeMs = useAir(round, sample.hold || loud, slice)
+    const velocity = player - bull
+    const crossingMs = velocity > 0 ? (KO_PULL_MS - round.pull) / velocity
+      : velocity < 0 ? (-KO_PULL_MS - round.pull) / velocity : Infinity
+    const knockout = crossingMs >= 0 && crossingMs <= slice
+    if (knockout) slice = crossingMs
+    const activeMs = useAir(round, speaking, slice)
     round.pull += player * activeMs - bull * slice
-    cursor = sliceEnd
-    if (round.pull >= KO_PULL_MS || round.pull <= -KO_PULL_MS) {
-      round.pull = clamp(round.pull, -KO_PULL_MS, KO_PULL_MS)
+    cursor += slice
+    if (knockout) {
+      round.pull = velocity > 0 ? KO_PULL_MS : -KO_PULL_MS
       round.finished = true
+      round.finish = 'knockout'
       break
     }
   }
 
-  round.lastT = to
-  if (to >= ROUND_MS) round.finished = true
+  round.lastT = round.finished ? cursor : Math.min(to, ROUND_MS)
+  if (!round.finished && to >= ROUND_MS) { round.finished = true; round.finish = 'time' }
   touchFaces(round, sample)
-  return viewOf(round, to)
+  return viewOf(round, round.lastT)
 }
 
 function useAir(round: Round, speaking: boolean, ms: number): number {
@@ -167,10 +186,13 @@ function viewOf(round: Round, t: number): View {
   const recovering = phase === 'listen' && round.exhausted
   return {
     phase,
+    finish: round.finish,
     breath,
-    shout: done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : recovering ? 'Вдохни.' : shoutOf(phase, breath, t),
+    shout: round.finish === 'knockout' ? 'Нокаут!' : done ? (yours ? 'Луг за тобой.' : his ? 'Раунд за Быничем.' : 'Ничья.') : recovering ? 'Вдохни.' : shoutOf(phase, breath, t),
     youHot: round.youHot,
     bullHot: round.bullHot,
+    youPower: round.youPower,
+    bullPower: round.bullPower,
     hint: done
       ? yours ? 'Бынич просит реванш.' : his ? 'Его вдох — твой шанс. Попробуем ещё?' : 'Никто не уступил. Ещё раунд?'
       : recovering ? 'Воздух кончился. Сделай паузу, чтобы восстановиться.' : hintOf(phase, breath),
@@ -231,12 +253,16 @@ function touchFaces(round: Round, sample: Sample): void {
   if (round.finished) {
     round.youHot = false
     round.bullHot = false
+    round.youPower = 0
+    round.bullPower = 0
     return
   }
   const loud = sample.hold || sample.db >= round.threshold
   if (sample.t < LISTEN_START) {
     round.youHot = sample.t >= HUSH_MS && loud
     round.bullHot = false
+    round.youPower = round.youHot ? (sample.hold ? 1 : playerPower(sample.db, round.threshold)) : 0
+    round.bullPower = 0
     return
   }
   const kind = breathAt(round.segments, sample.t - LISTEN_START)
@@ -244,6 +270,8 @@ function touchFaces(round: Round, sample: Sample): void {
   const counts = sample.hold || (kind === 'inhale' ? sample.moo && loud : sample.moo && gated)
   round.youHot = counts && !round.exhausted
   round.bullHot = kind === 'voice'
+  round.youPower = round.youHot ? (sample.hold ? 1 : playerPower(sample.db, round.threshold)) : 0
+  round.bullPower = round.bullHot ? round.rules?.bullForce ?? 1 : 0
 }
 
 function cheeksOf(phase: View['phase'], breath: View['breath'], proximity: number): number {

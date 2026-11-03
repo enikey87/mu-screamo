@@ -4,8 +4,8 @@ export const INVITE_MS = 2_000
 export const LISTEN_MS = 8_000
 export const ROUND_MS = HUSH_MS + INVITE_MS + LISTEN_MS
 
-/** Нокаут после примерно четырёх секунд «мууу» во вдох. */
-export const KO_PULL_MS = 4_400
+/** Край шкалы для досрочного нокаута. */
+export const KO_PULL_MS = 3_600
 export const INHALE_PLAYER = 1.35
 export const INHALE_BULL = 0.12
 export const VOICE_PLAYER = 0.72

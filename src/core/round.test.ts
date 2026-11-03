@@ -73,7 +73,7 @@ describe('push', () => {
     const view = push(round, { ...room, t: ROUND_MS, hold: true })
     expect(view.phase).toBe('done')
     expect(view.pleased).toBe(true)
-    expect(view.shout).toBe('Луг за тобой.')
+    expect(view.shout).toBe('Нокаут!')
   })
 })
 
@@ -106,11 +106,11 @@ describe('championship copy', () => {
 
   it.each([
     [-KO_PULL_MS, 'Раунд за Быничем.', false, true],
-    [-353, 'Раунд за Быничем.', false, true],
-    [-352, 'Ничья.', false, false],
+    [-289, 'Раунд за Быничем.', false, true],
+    [-288, 'Ничья.', false, false],
     [0, 'Ничья.', false, false],
-    [352, 'Ничья.', false, false],
-    [353, 'Луг за тобой.', true, false],
+    [288, 'Ничья.', false, false],
+    [289, 'Луг за тобой.', true, false],
     [KO_PULL_MS, 'Луг за тобой.', true, false],
   ])('announces the result at pull %i consistently with the fighters', (pull, shout, pleased, puzzled) => {
     const round = ready([{ kind: 'inhale', ms: 8000 }])
@@ -253,5 +253,121 @@ describe('inhale animation timing', () => {
   it('does not animate a nonexistent inhale in an empty schedule', () => {
     const round = createRound([])
     expect(push(round, { ...room, t: 3000 }).inhale).toBeNull()
+  })
+})
+
+describe('voice pressure and knockout', () => {
+  it.each(['voice', 'inhale'] as const)('uses recognized moo loudness during %s without rewarding other loud sounds', kind => {
+    const play = (db: number, moo: boolean) => {
+      const round = ready([{ kind, ms: 8000 }])
+      walk(round, 500, 2400, {})
+      walk(round, 2500, 3000, { db, moo })
+      return push(round, { ...room, t: 3000, db, moo })
+    }
+    const quiet = play(-60, false)
+    const soft = play(-35, true)
+    const normal = play(-20, true)
+    const strong = play(-8, true)
+    expect(soft.tug).toBeGreaterThan(quiet.tug)
+    expect(normal.tug).toBeGreaterThan(soft.tug)
+    expect(strong.tug).toBeGreaterThan(normal.tug)
+    expect(play(0, true).tug).toBeCloseTo(strong.tug)
+    expect(play(-8, false).tug).toBe(quiet.tug)
+    expect(soft.youPower).toBeCloseTo(0.61)
+    expect(normal.youPower).toBe(1)
+    expect(strong.youPower).toBe(1.5)
+    expect(quiet.youPower).toBe(0)
+  })
+
+  it('requires the extra voice gate while allowing a softer moo on an inhale', () => {
+    for (const kind of ['voice', 'inhale'] as const) {
+      const round = ready([{ kind, ms: 8000 }])
+      walk(round, 500, 2400, {})
+      const below = push(round, { ...room, t: 2500, db: -38, moo: true })
+      expect(below.youHot).toBe(kind === 'inhale')
+      const boundary = push(round, { ...room, t: 2600, db: -37, moo: true })
+      expect(boundary.youHot).toBe(true)
+      expect(boundary.youPower).toBeCloseTo(0.558)
+    }
+  })
+
+  it.each([1, -1])('announces a knockout on side %i at the crossing, then freezes the result', side => {
+    const round = createRound([{ kind: side > 0 ? 'inhale' : 'voice', ms: 8000 }])
+    walk(round, 0, 2400, {})
+    round.pull = side * (KO_PULL_MS - 12.3)
+    const view = push(round, { ...room, t: 2500, hold: side > 0 })
+    expect(view.finish).toBe('knockout')
+    expect(view.phase).toBe('done')
+    expect(view.shout).toBe('Нокаут!')
+    expect(view.tug).toBe(side)
+    expect(view.elapsed).toBeCloseTo(2400 + 12.3 / (side > 0 ? 1.23 : 1))
+    expect(view.youPower).toBe(0)
+    expect(view.bullPower).toBe(0)
+    expect(push(round, { ...room, t: ROUND_MS, hold: true })).toEqual(view)
+    const fresh = push(createRound(round.segments), room)
+    expect(fresh.finish).toBeNull()
+    expect(fresh.tug).toBe(0)
+  })
+
+  it('distinguishes a timed win from knockout and does not simulate force across a suspended frame', () => {
+    const round = ready([{ kind: 'voice', ms: 8000 }])
+    round.pull = 1000
+    const view = push(round, { ...room, t: ROUND_MS, db: -8, moo: true })
+    expect(view.finish).toBe('time')
+    expect(view.shout).toBe('Луг за тобой.')
+    expect(view.tug).toBeCloseTo(1000 / KO_PULL_MS)
+    expect(view.elapsed).toBe(ROUND_MS)
+  })
+
+  it('uses bull loudness for both opposing pull and the visible voice level', () => {
+    const results = [0.6, 0.9].map(bullForce => {
+      const round = createRound([{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 7000 }], { airMs: 1000, recoveryRate: 2, recoverAt: 0.4, bullForce })
+      walk(round, 0, 3000, {})
+      const voice = push(round, { ...room, t: 3000 })
+      walk(round, 3100, 3400, {})
+      expect(push(round, { ...room, t: 3400 }).bullPower).toBe(0)
+      return voice
+    })
+    expect(results[0].tug).toBeCloseTo(-360 / KO_PULL_MS)
+    expect(results[1].tug).toBeCloseTo(-540 / KO_PULL_MS)
+    expect(results.map(view => view.bullPower)).toEqual([0.6, 0.9])
+  })
+
+  it('keeps knockout timing identical when frames split across air depletion', () => {
+    const results = [10, 25, 100].map(step => {
+      const round = createRound([{ kind: 'voice', ms: 8000 }], { airMs: 125, recoveryRate: 2, recoverAt: 0.4, bullForce: 1 })
+      walk(round, 0, 2400, {})
+      round.pull = -KO_PULL_MS + 300
+      let view = push(round, { ...room, t: 2400 })
+      for (let t = 2400 + step; t <= 3400 && view.phase !== 'done'; t += step) view = push(round, { ...room, t, hold: true })
+      expect(view.finish).toBe('knockout')
+      expect(view.air).toBe(0)
+      expect(view.elapsed).toBeCloseTo(2790, 6)
+      return { tug: view.tug, air: view.air, finish: view.finish }
+    })
+    expect(results[1]).toEqual(results[0])
+    expect(results[2]).toEqual(results[0])
+  })
+
+  it('stops air consumption at a knockout inside a frame', () => {
+    const round = createRound([{ kind: 'inhale', ms: 8000 }], { airMs: 1000, recoveryRate: 2, recoverAt: 0.4, bullForce: 1 })
+    walk(round, 0, 2400, {})
+    round.pull = KO_PULL_MS - 12.3
+    const view = push(round, { ...room, t: 2500, hold: true })
+    expect(view.air).toBeCloseTo(0.99)
+    expect(view.elapsed).toBeCloseTo(2410)
+  })
+})
+
+
+describe('late championship knockout threat', () => {
+  it.each([3, 4])('stage %i knocks out a silent player before time runs out', index => {
+    const stage = STAGES[index]
+    const round = createRound(stage.bull.segments, stage.rules)
+    let view = push(round, room)
+    for (let t = 10; t <= ROUND_MS && view.phase !== 'done'; t += 10) view = push(round, { ...room, t })
+    expect(view.finish).toBe('knockout')
+    expect(view.tug).toBe(-1)
+    expect(view.elapsed).toBeLessThan(ROUND_MS)
   })
 })

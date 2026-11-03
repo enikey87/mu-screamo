@@ -513,3 +513,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   #fighter-bull.is-inhaling #bull-bull { transform: none; transition: none; }
 }
+
+.voice-level { width: 48px; height: 4px; margin: 5px auto 0; overflow: hidden; border-radius: 2px; background: rgba(42, 62, 36, 0.12); }
+.voice-level > span { display: block; width: 100%; height: 100%; background: var(--win); transform: scaleX(var(--power, 0)); transform-origin: left; transition: transform 80ms linear; }
+.fighter--bull .voice-level > span { background: var(--lose); }
+.app:not([data-phase]) .voice-level { visibility: hidden; }

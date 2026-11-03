@@ -1,3 +1,4 @@
+import { bullVoice } from './voice-power'
 import { describe, expect, it } from 'vitest'
 import { championshipStage, loadProgress, saveProgress, winStage, CHAMPIONSHIP_KEY, STAGES } from './championship'
 
@@ -73,4 +74,12 @@ describe('championship save', () => {
     expect(loadProgress(() => storage)).toBe(0)
     expect(saveProgress(() => storage, 1)).toBe(false)
   })
+})
+
+
+it('uses the same bull loudness profile for the audio and championship pull', () => {
+  for (const stage of STAGES) {
+    expect(stage.bull.fury).toBe(stage.fury)
+    expect(stage.rules.bullForce).toBe(bullVoice(stage.bull.fury).power)
+  }
 })
