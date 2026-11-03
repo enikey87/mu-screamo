@@ -396,7 +396,7 @@ body {
 .app[data-mode='championship'] .callout { margin-top: 16px; min-height: 1.85em; font-size: clamp(36px, 11vw, 48px); }
 .app[data-mode='championship'] .callout.is-count { font-size: 80px; min-height: 90px; }
 .app[data-mode='championship'] .tagline { min-height: 2.8em; margin-top: 10px; font-size: 14px; line-height: 1.4; text-wrap: pretty; }
-.app[data-mode='championship'] .arena { min-height: 175px; padding-inline: 20px; }
+.app[data-mode='championship'] .arena { min-height: 175px; padding-inline: 28px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .app[data-scene='fence'] { --scene-art: url('/art/arena-fence.webp'); --scene-wash: #e6ebc8; }
 .app[data-scene='yard'] { --scene-art: url('/art/arena-yard.webp'); --scene-wash: #f2dfbd; }
 .app[data-scene='evening'] { --scene-art: url('/art/arena-evening.webp'); --scene-wash: #ead7d2; }
@@ -413,13 +413,14 @@ body {
 .app[data-scene] .arena__ring { opacity: .25; }
 .app[data-scene] .fighter__name { background: var(--paper); box-shadow: 0 0 0 3px var(--paper); }
 .app[data-scene] .versus { text-shadow: 0 1px 3px var(--paper), 0 0 8px var(--paper); }
+.app[data-mode='championship'] .fighter { grid-template-columns: minmax(0, 1fr); }
 .app[data-mode='championship'] .fighter__body { width: clamp(100px, 36vw, 180px); max-width: 24svh; }
 .app[data-mode='championship'] .fighter--bull:not(.is-hot) .fighter__body { animation-duration: calc(3.4s - var(--fury, 0) * .35s); }
 .app[data-mode='championship'] .fighter--bull.is-hot .fighter__body { animation-duration: calc(.32s - var(--fury, 0) * .025s); }
-.bull__championship { position: absolute; inset: 0; display: none; background-image: url('/art/bull-championship.webp'); background-repeat: no-repeat; background-size: 400% 200%; background-position: var(--bull-column) 0%; transform: scale(calc(1 + var(--fury, 0) * .015)); transform-origin: center bottom; }
+.bull__championship { position: absolute; inset: 0; display: none; background-image: url('/art/bull-championship-isolated.webp'); background-repeat: no-repeat; background-size: 540% 270%; background-position: calc(3.977273% + var(--bull-column) * .92045454) 10.294118%; transform: scale(calc(1 + var(--fury, 0) * .015)); transform-origin: center bottom; }
 .app[data-mode='championship']:not([data-fury='0']) #bull-bull .bull__face { visibility: hidden; }
 .app[data-mode='championship']:not([data-fury='0']) .bull__championship { display: block; }
-.bull.is-fierce .bull__championship { background-position-y: 100%; }
+.bull.is-fierce .bull__championship { background-position-y: 89.705882%; }
 .app[data-fury='3'] .arena__ring, .app[data-fury='4'] .arena__ring { border-color: #c93f2480; box-shadow: 0 0 0 8px #c93f2406; }
 .air { flex: 0 0 auto; margin-bottom: 10px; }
 .air__label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 10px; color: var(--muted); }
@@ -518,3 +519,11 @@ body {
 .voice-level > span { display: block; width: 100%; height: 100%; background: var(--win); transform: scaleX(var(--power, 0)); transform-origin: left; transition: transform 80ms linear; }
 .fighter--bull .voice-level > span { background: var(--lose); }
 .app:not([data-phase]) .voice-level { visibility: hidden; }
+
+.fighter.is-scared .bull { animation: tremble .14s linear infinite; }
+@keyframes tremble {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  25% { translate: calc(var(--fear) * -3px) 0; rotate: calc(var(--fear) * -1deg); }
+  50% { translate: calc(var(--fear) * 3px) 0; rotate: calc(var(--fear) * 1deg); }
+  75% { translate: calc(var(--fear) * -2px) 0; rotate: calc(var(--fear) * -.65deg); }
+}
