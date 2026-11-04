@@ -3,7 +3,7 @@ import { championshipStage, pickChampionshipBull, loadProgress, saveProgress, ST
 import { dailyBull } from './core/daily'
 import { createRound, push, type Round, type View } from './core/round'
 import { startWith, tossStarter, type Starter } from './core/turn'
-import { HUSH_MS, INVITE_MS, ROUND_MS } from './core/timing'
+import { HUSH_MS, INVITE_MS, LISTEN_MS, ROUND_MS } from './core/timing'
 import { playCountdown } from './audio/count'
 import { openMic, type Mic } from './audio/mic'
 import { createPlayback } from './audio/output'
@@ -24,6 +24,7 @@ const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('.mode-nav 
 const callout = required<HTMLElement>('#callout')
 const calloutLabel = required<HTMLElement>('#callout-label')
 const clock = required<HTMLElement>('#clock')
+const clockLabel = required<HTMLElement>('#clock-label')
 const youFighter = required<HTMLElement>('#fighter-you')
 const bullFighter = required<HTMLElement>('#fighter-bull')
 const youBull = required<HTMLElement>('#you-bull')
@@ -105,6 +106,8 @@ function resetArena(): void {
   for (const face of [youBull, bullBull]) face.classList.remove('is-fierce', 'is-pleased', 'is-puzzled')
   callout.classList.remove('is-count', 'is-pop')
   scoreboard.hidden = true
+  clock.style.transform = 'scaleX(1)'
+  clockLabel.textContent = 'Приготовься'
   championSeal.hidden = true
   air.hidden = true
   bullWindow.hidden = true
@@ -416,7 +419,11 @@ function render(view: View): void {
   gauge.setAttribute('aria-valuenow', String(Math.round(view.tug * 100)))
   gauge.setAttribute('aria-valuetext', advantage.textContent)
   if (view.phase === 'done') privacy.textContent = ''
-  clock.style.transform = `scaleX(${Math.max(0, 1 - view.elapsed / ROUND_MS)})`
+  const roundRemaining = view.phase === 'done' ? 0 : Math.max(0, Math.min(LISTEN_MS, ROUND_MS - view.elapsed))
+  clock.style.transform = `scaleX(${roundRemaining / LISTEN_MS})`
+  clockLabel.textContent = view.phase === 'done'
+    ? view.finish === 'knockout' ? 'Нокаут' : 'Раунд окончен'
+    : view.phase === 'listen' ? `До конца раунда · ${Math.ceil(roundRemaining / 1000)} с` : 'Приготовься'
 }
 
 function unlock(ctx: AudioContext): void {

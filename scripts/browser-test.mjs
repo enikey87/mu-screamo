@@ -252,6 +252,52 @@ async function assertReadableHeadings(url) {
   await evaluate(`document.fonts.ready`)
 }
 
+async function assertRoundTimer(expected) {
+  const timer = await evaluate(`(() => {
+    const track = document.querySelector('.clock'), label = document.querySelector('#clock-label');
+    return { role: track.getAttribute('role'), hidden: track.getAttribute('aria-hidden'), text: label?.textContent,
+      fraction: new DOMMatrix(document.querySelector('#clock').style.transform).a };
+  })()`)
+  assert.equal(timer.role, 'timer', 'round clock needs timer semantics')
+  assert.notEqual(timer.hidden, 'true', 'round time must be accessible')
+  if (typeof expected === 'number') {
+    assert.match(timer.text, /^До конца раунда · [1-8] с$/)
+    const seconds = Number(timer.text.match(/([1-8]) с$/)[1])
+    assert.ok(Math.abs(seconds - expected) <= 1, `round clock should show about ${expected}s: ${JSON.stringify(timer)}`)
+    assert.ok(timer.fraction > 0 && timer.fraction <= 1)
+    assert.equal(Math.ceil(timer.fraction * 8), seconds, 'fill and displayed seconds must agree')
+  } else {
+    assert.equal(timer.text, expected)
+    assert.equal(timer.fraction, expected === 'Приготовься' ? 1 : 0)
+  }
+}
+
+async function assertRoundTimerLayout() {
+  for (const [width, height] of [[280, 560], [390, 844], [1280, 720], [1920, 1080]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    const layout = await evaluate(`(() => {
+      const track = document.querySelector('.clock'), fill = document.querySelector('#clock'), label = document.querySelector('#clock-label');
+      if (!label) return null;
+      const box = node => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height }; };
+      const original = { text: label.textContent, fill: fill.style.transform, hidden: document.querySelector('#scoreboard').hidden };
+      document.querySelector('#scoreboard').hidden = false;
+      const samples = ['Приготовься', 'До конца раунда · 8 с', 'До конца раунда · 1 с', 'Раунд окончен', 'Нокаут'].flatMap(text => [1, .5, 0].map(fraction => {
+        label.textContent = text; fill.style.transform = 'scaleX(' + fraction + ')';
+        const range = document.createRange(); range.selectNodeContents(label);
+        return { text, track: box(track), ink: box(range), font: parseFloat(getComputedStyle(label).fontSize) };
+      }));
+      label.textContent = original.text; fill.style.transform = original.fill; document.querySelector('#scoreboard').hidden = original.hidden;
+      return samples;
+    })()`)
+    assert.ok(layout && layout.length === 15, 'round clock must have a fixed label inside its track')
+    for (const sample of layout) {
+      assert.ok(sample.track.height >= 26 && sample.font >= 13, `round timer must be large enough: ${JSON.stringify(sample)}`)
+      assert.ok(sample.ink.left >= sample.track.left + 2 && sample.ink.right <= sample.track.right - 2 && sample.ink.top >= sample.track.top + 2 && sample.ink.bottom <= sample.track.bottom - 2, `timer label must fit at ${width}×${height}: ${JSON.stringify(sample)}`)
+      assert.deepEqual(sample.track, layout[0].track, 'clock labels and progress must not move the layout')
+    }
+  }
+}
+
 async function assertResultClear() {
   assert.equal((await state()).phase, 'done')
   for (const [width, height] of [[280, 560], [320, 568], [375, 667], [390, 844], [844, 390], [1000, 768], [1280, 720], [1920, 1080]]) {
@@ -389,6 +435,7 @@ try {
   const timerPaper = await evaluate(`['#player-window', '#bull-window'].map(selector => getComputedStyle(document.querySelector(selector)).backgroundColor)`)
   assert.deepEqual(timerPaper, [print.paper, print.paper], 'timer text needs opaque paper above the detailed scenery')
   await assertReadableHeadings(url)
+  await assertRoundTimerLayout()
   await call('Network.enable')
   await call('Network.setCacheDisabled', { cacheDisabled: true })
   await call('Network.setBlockedURLs', { urls: ['*oswald*.ttf*'] })
@@ -405,6 +452,7 @@ try {
   }
   await assertStableCues('daily with missing display font')
   await assertReadableHeadings(url)
+  await assertRoundTimerLayout()
   await call('Network.setBlockedURLs', { urls: [] })
   await call('Network.setCacheDisabled', { cacheDisabled: false })
   console.log('PASS: folk-punk print identity, readable controls, local Cyrillic font and font-failure fallback')
@@ -430,15 +478,22 @@ try {
       window.__rhythmObserver.observe(app, { attributes: true, attributeFilter: ['data-breath'] });
       document.querySelector('#go').click(); if (window.__micRequests) window.__denyMic();
     })()`)
+    await until(async () => (await state()).phase === 'invite', 'timer preparation begins')
+    await assertRoundTimer('Приготовься')
+    await pause(1000)
+    await assertRoundTimer('Приготовься')
     await until(async () => (await state()).phase === 'listen', 'selected championship rhythm begins')
+    await assertRoundTimer(8)
     assert.equal(await evaluate(`window.__draws.length`), 0, 'coin and rhythm must consume separate random draws')
     assert.equal(await evaluate(`document.querySelector('#app').dataset.starter`), expected.starter)
     const audio = await evaluate(`(() => { const ctx = window.__gameContexts.at(-1); return ctx.__mooOnsets.map(at => Math.round((at - ctx.__starts[0] - 4) * 1000)); })()`)
     assert.deepEqual(audio, expected.onsets, 'voice audio must use the selected pattern, including a different same-stage retry')
     await until(async () => (await state()).breath === 'inhale', 'first selected player window')
+    await assertRoundTimer(expected.starter === 'you' ? 8 : 7)
     const time = await evaluate(`parseFloat(document.querySelector('#bull-time').textContent.replace(',', '.')) * 1000`)
     assert.ok(time > expected.inhale - 150 && time <= expected.inhale, `timer must show the selected inhale: ${time}`)
     await until(async () => (await state()).phase === 'done', 'selected pattern completes')
+    await assertRoundTimer('Раунд окончен')
     const changes = await evaluate(`window.__breathChanges`)
     assert.equal(changes.length, 6)
     for (const [index, change] of changes.entries()) {
@@ -847,6 +902,7 @@ try {
 
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).phase === 'hush', 'replay resets round')
+  await assertRoundTimer('Приготовься')
   assert.equal((await state()).meter, 0)
   await assertFear(0, 0)
   assert.equal((await state()).loser, undefined)
@@ -1154,6 +1210,7 @@ try {
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).phase === 'done', 'quiet player is knocked out by the final bull')
   assert.equal((await state()).finish, 'knockout')
+  await assertRoundTimer('Нокаут')
   assert.equal((await state()).title, 'Нокаут!')
   assert.equal((await state()).loser, 'fighter-you')
   assert.equal(await evaluate(`document.querySelector('#app').classList.contains('is-ko')`), true)
