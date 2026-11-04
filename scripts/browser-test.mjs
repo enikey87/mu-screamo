@@ -286,13 +286,13 @@ try {
   await call('Page.enable')
   await call('Runtime.enable')
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
-    window.__coinValue = .75; Math.random = () => window.__coinValue;
+    window.__coinValue = .75; window.__draws = []; Math.random = () => window.__draws.length ? window.__draws.shift() : window.__coinValue;
     window.__gameContexts = [];
     const NativeAudioContext = window.AudioContext;
     window.AudioContext = new Proxy(NativeAudioContext, { construct(Target, args) {
-      const ctx = new Target(...args); window.__gameContexts.push(ctx); ctx.__starts = [];
+      const ctx = new Target(...args); window.__gameContexts.push(ctx); ctx.__starts = []; ctx.__mooOnsets = [];
       const create = ctx.createOscillator.bind(ctx);
-      ctx.createOscillator = () => { const osc = create(), start = osc.start.bind(osc); osc.start = at => { ctx.__starts.push(at); start(at); }; return osc; };
+      ctx.createOscillator = () => { const osc = create(), start = osc.start.bind(osc); osc.start = at => { ctx.__starts.push(at); start(at); }; const frequency = osc.frequency.setValueAtTime.bind(osc.frequency); osc.frequency.setValueAtTime = (hz, at) => { if (hz > 80 && hz < 200) ctx.__mooOnsets.push(at); return frequency(hz, at); }; return osc; };
       return ctx;
     } });
     window.__echoPeers = []; window.__gameTracks = [];
@@ -311,6 +311,49 @@ try {
       return new Promise((_, reject) => { window.__denyMic = () => reject(new DOMException('Denied', 'NotAllowedError')); });
     };
   ` })
+  const rhythmProgress = await call('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 2 }))` })
+  await loaded(`${url}#championship`)
+  const rhythmCases = [
+    { draws: [.75, 0], starter: 'bull', onsets: [0, 2500, 4600], windows: [0, 1000, 2500, 3600, 4600, 5800], inhale: 1500 },
+    { draws: [.75, 0], starter: 'bull', onsets: [0, 2200, 5000], windows: [0, 1200, 2200, 3100, 5000, 6200], inhale: 1000 },
+    { draws: [.25, .99], starter: 'you', onsets: [2100, 5000, 7100], windows: [0, 2100, 3500, 5000, 6000, 7100], inhale: 2100 },
+  ]
+  for (const [attempt, expected] of rhythmCases.entries()) {
+    await evaluate(`(() => {
+      window.__draws = ${JSON.stringify(expected.draws)}; window.__breathChanges = [];
+      const audio = window.__gameContexts.at(-1);
+      if (audio) { audio.__starts = []; audio.__mooOnsets = []; }
+      const app = document.querySelector('#app');
+      window.__rhythmObserver?.disconnect();
+      window.__rhythmObserver = new MutationObserver(() => {
+        if (app.dataset.phase !== 'listen') return;
+        const kind = app.dataset.breath, ctx = window.__gameContexts.at(-1);
+        if (window.__breathChanges.at(-1)?.kind !== kind) window.__breathChanges.push({ kind, at: (ctx.currentTime - ctx.__starts[0] - 4) * 1000 });
+      });
+      window.__rhythmObserver.observe(app, { attributes: true, attributeFilter: ['data-breath'] });
+      document.querySelector('#go').click(); if (window.__micRequests) window.__denyMic();
+    })()`)
+    await until(async () => (await state()).phase === 'listen', 'selected championship rhythm begins')
+    assert.equal(await evaluate(`window.__draws.length`), 0, 'coin and rhythm must consume separate random draws')
+    assert.equal(await evaluate(`document.querySelector('#app').dataset.starter`), expected.starter)
+    const audio = await evaluate(`(() => { const ctx = window.__gameContexts.at(-1); return ctx.__mooOnsets.map(at => Math.round((at - ctx.__starts[0] - 4) * 1000)); })()`)
+    assert.deepEqual(audio, expected.onsets, 'voice audio must use the selected pattern, including a different same-stage retry')
+    await until(async () => (await state()).breath === 'inhale', 'first selected player window')
+    const time = await evaluate(`parseFloat(document.querySelector('#bull-time').textContent.replace(',', '.')) * 1000`)
+    assert.ok(time > expected.inhale - 150 && time <= expected.inhale, `timer must show the selected inhale: ${time}`)
+    await until(async () => (await state()).phase === 'done', 'selected pattern completes')
+    const changes = await evaluate(`window.__breathChanges`)
+    assert.equal(changes.length, 6)
+    for (const [index, change] of changes.entries()) {
+      assert.equal(change.kind, (index + (expected.starter === 'you' ? 1 : 0)) % 2 ? 'inhale' : 'voice')
+      assert.ok(Math.abs(change.at - expected.windows[index]) < 100, `visible breath must follow the frozen audio plan: ${JSON.stringify(changes)}`)
+    }
+    await until(async () => !(await state()).hidden, 'retry selected rhythm')
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 2, 'a different pattern must not grant progress')
+    console.log(`PASS: championship rhythm ${attempt + 1} keeps audio, windows and timer synchronized`)
+  }
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: rhythmProgress.identifier })
+  await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
   for (const mode of ['daily', 'championship']) {
     await loaded(mode === 'daily' ? url : `${url}#championship`)
     assert.equal(await evaluate(`document.querySelectorAll('.masthead, .tagline, #stage-mood, #date-label, .round-stamp, .versus, .arena__ring, .scoreboard__labels > span').length`), 0, 'remove secondary copy and repeated labels from the page')

@@ -1,5 +1,5 @@
 import { analyzeFrame } from './core/analyze'
-import { championshipStage, loadProgress, saveProgress, STAGES, winStage } from './core/championship'
+import { championshipStage, pickChampionshipBull, loadProgress, saveProgress, STAGES, winStage } from './core/championship'
 import { dailyBull } from './core/daily'
 import { createRound, push, type Round, type View } from './core/round'
 import { startWith, tossStarter, type Starter } from './core/turn'
@@ -70,6 +70,7 @@ let origin = 0
 let cleared = loadProgress(() => localStorage)
 let stageIndex = Math.min(cleared, STAGES.length - 1)
 let mode: 'daily' | 'championship' = location.hash === '#championship' ? 'championship' : 'daily'
+const previousRhythms = new Map<number, number>()
 let wonStage = false
 let saved = true
 
@@ -218,7 +219,9 @@ async function start(): Promise<void> {
   const today = new Date()
   const stage = mode === 'championship' ? championshipStage(stageIndex) : null
   starter = tossStarter(Math.random())
-  bull = startWith(stage?.bull ?? dailyBull(today), starter)
+  const selected = stage ? pickChampionshipBull(stageIndex, Math.random(), previousRhythms.get(stageIndex)) : null
+  if (selected) previousRhythms.set(stageIndex, selected.rhythm)
+  bull = startWith(selected?.bull ?? dailyBull(today), starter)
   const coinReady = animateCoin(id, starter)
   go.disabled = true
   go.textContent = 'Готовимся к бою…'
