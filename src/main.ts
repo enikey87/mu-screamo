@@ -64,6 +64,7 @@ let frame = 0
 let bout = 0
 let running = false
 let holding = false
+let pointerStartedInRound = false
 let micBlocked = false
 let round: Round | null = null
 let bull = dailyBull(new Date())
@@ -177,6 +178,7 @@ stageButtons.forEach((button, index) => button.addEventListener('click', () => {
 }))
 
 go.addEventListener('pointerdown', (event) => {
+  pointerStartedInRound = running
   if (audio?.state === 'suspended') void audio.resume()
   if (!running || mic) return
   holding = true
@@ -198,8 +200,8 @@ go.addEventListener('keyup', event => {
   if (event.key === ' ' || event.key === 'Enter') holding = false
 })
 go.addEventListener('blur', () => { holding = false })
-go.addEventListener('click', () => {
-  if (running) return
+go.addEventListener('click', event => {
+  if (running || (event.detail > 0 && pointerStartedInRound)) return
   if (mode === 'championship' && wonStage) {
     stageIndex = stageIndex < STAGES.length - 1 ? stageIndex + 1 : 0
     preview()
