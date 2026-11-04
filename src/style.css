@@ -484,8 +484,8 @@ body {
 .app { --cue-gap: clamp(84px, 23vw, 240px); --rope-step: clamp(8px, 2vw, 28px); }
 .fighter--you { transform: translateX(calc(min(var(--tug, 0), 0) * var(--rope-step))); }
 .fighter--bull { transform: translateX(calc(max(var(--tug, 0), 0) * var(--rope-step))); }
-.arena, .app[data-mode='championship'] .arena { column-gap: var(--cue-gap); grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 12px; }
-.fighter { min-width: 0; width: 100%; grid-template-columns: minmax(0, 1fr); }
+.arena, .app[data-mode='championship'] .arena { column-gap: var(--cue-gap); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 120px auto; padding-inline: 12px; }
+.fighter { min-width: 0; width: 100%; grid-row: 2; grid-template-columns: minmax(0, 1fr); }
 .app .fighter .fighter__body { max-width: 100%; }
 .fighter-status { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(180px, 100%); height: 68px; margin-bottom: 12px; }
 .fighter-status .fighter__name { margin: 0; font-size: 14px; line-height: 18px; font-weight: 700; letter-spacing: .5px; }
@@ -496,15 +496,15 @@ body {
 .bull-window__track { background: #376f8a26; }
 #player-fill, #bull-fill { display: block; height: 100%; background: currentColor; transform-origin: left; }
 .app[data-bull-cue='warning'] .bull-window, .app[data-bull-cue='voice'] .bull-window { color: var(--lose); }
-.callout { position: absolute; z-index: 1; left: 50%; top: calc(50% + 40px); translate: -50% -50%; display: grid; place-items: center; width: var(--cue-gap); height: 120px; margin: 0; font-size: clamp(22px, 5.7vw, 48px); font-weight: 900; line-height: 1; letter-spacing: -.055em; text-transform: uppercase; text-align: center; }
+.callout { position: absolute; z-index: 1; left: 50%; top: calc(50% + 100px); translate: -50% -50%; display: grid; place-items: center; width: var(--cue-gap); height: 120px; margin: 0; font-size: clamp(22px, 5.7vw, 48px); font-weight: 900; line-height: 1; letter-spacing: -.055em; text-transform: uppercase; text-align: center; }
 #callout-label { display: grid; place-items: center; width: 100%; height: 100%; }
 .app[data-cue='moo'] .callout { color: var(--win); }
 .app[data-cue='ready'] .callout { color: var(--even); }
 .callout.is-count { font-size: clamp(46px, 9vw, 84px); }
-.app:not([data-phase]) .arena { padding-top: 160px; }
-.app:not([data-phase]) .callout { top: 0; translate: -50% 0; width: 100%; height: 140px; font-size: clamp(36px, 9vw, 60px); }
+.app:not([data-phase]) .arena { padding-top: 12px; }
+.app:not([data-phase]) .callout { position: static; grid-column: 1 / -1; grid-row: 1; translate: none; width: 100%; height: 120px; font-size: clamp(36px, 9vw, 60px); }
 .app[data-phase='toss'] .callout { top: calc(50% + 90px); width: 90%; font-size: clamp(24px, 4vw, 36px); }
-.app[data-phase='done'] .callout { width: 90%; padding: 12px; background: var(--paper); font-size: clamp(28px, 5vw, 48px); }
+.app[data-phase='done'] .callout { position: static; grid-column: 1 / -1; grid-row: 1; translate: none; width: 100%; padding: 12px 0; background: none; animation: none; font-size: clamp(28px, 5vw, 48px); }
 @media (min-width: 1000px) {
   .sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   .mode-nav { width: min(440px, 100%); }
