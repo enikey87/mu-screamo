@@ -305,6 +305,128 @@ async function assertWatchedRoundLayout() {
   for (const frame of frames) assert.deepEqual(frame.boxes, frames[0].boxes, `actual round layout shifted in ${frame.phase}`)
 }
 
+async function mobileViewport(width, height) {
+  await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 3, mobile: true, screenOrientation: { type: width>height?'landscapePrimary':'portraitPrimary', angle: width>height?90:0 } })
+  await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+}
+
+async function touch(selector, type = 'tap') {
+  const point = await evaluate(`(() => { const n=document.querySelector(${JSON.stringify(selector)}), r=n.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2, hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('button')===n}; })()`)
+  assert.equal(point.hit, true, `touch target must be reachable: ${selector}`)
+  await call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: point.x, y: point.y, id: 1 }] })
+  if (type === 'tap') await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+}
+
+async function assertMobileFit(insets = {}) {
+  const view = await evaluate(`(() => {
+    const visible = [...document.querySelectorAll('.sheet,.arena,#go,.gauge,.clock,.mode-nav button,.stage-step,.player-window,.bull-window,.fighter__body,.bull__championship,#save-notice')].filter(n=>getComputedStyle(n).visibility!=='hidden' && n.getBoundingClientRect().height>0 && !n.closest('.app.is-ko .fighter.is-lose'));
+    const box=n=>{const r=n.getBoundingClientRect();return {name:n.id||n.className,left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
+    return {width:visualViewport.width,height:visualViewport.height,scale:visualViewport.scale,scroll:document.documentElement.scrollWidth,inner:innerWidth,touch:navigator.maxTouchPoints,coarse:matchMedia('(pointer:coarse)').matches,boxes:visible.map(box),buttonTextFits:(()=>{const go=document.querySelector('#go'),r=go.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(go);const ink=range.getBoundingClientRect();return ink.left>=r.left+2&&ink.right<=r.right-2&&ink.top>=r.top+2&&ink.bottom<=r.bottom-2})()};
+  })()`)
+  assert.ok(view.touch > 0 && view.coarse && view.scale === 1, `must run in touch mobile emulation: ${JSON.stringify(view)}`)
+  assert.ok(view.scroll <= view.inner, `mobile horizontal overflow: ${JSON.stringify(view)}`)
+  assert.ok(view.buttonTextFits, `mobile button text must fit: ${JSON.stringify(view)}`)
+  for(const box of view.boxes) assert.ok(box.left >= (insets.left ?? 0) && box.right <= view.width-(insets.right ?? 0)+.5 && box.top >= (insets.top ?? 0) && box.bottom <= view.height-(insets.bottom ?? 0)+.5, `mobile controls must fit the visible viewport: ${JSON.stringify(view)}`)
+}
+
+async function checkMobileLayouts(url) {
+  for(const [width,height,insets = {}] of [[280,560],[320,568],[375,667],[390,844],[430,932],[568,320],[844,390],[390,700,{top:44,right:0,bottom:34,left:0}],[844,390,{top:0,right:44,bottom:21,left:44}]]) {
+    await mobileViewport(width,height)
+    await call('Emulation.setSafeAreaInsetsOverride',{insets})
+    for(const mode of ['daily','championship']) {
+      await loaded(mode==='daily'?url:`${url}#championship`)
+      await evaluate(`document.fonts.ready`)
+      await assertMobileFit(insets)
+      for(const phase of ['toss','invite','listen','done']) {
+        await evaluate(`(() => {
+          const app=document.querySelector('#app'); app.dataset.phase=${JSON.stringify(phase)};
+          document.querySelector('#scoreboard').hidden=${phase==='toss'};
+          document.querySelector('#save-notice').hidden=${phase!=='done'};
+          document.querySelector('#go').textContent=${JSON.stringify(phase==='done'?(mode==='championship'?'Пройти чемпионат снова ↗':'Ещё раунд ↗'):'Зажми и тяни')};
+          document.querySelector('#callout').classList.toggle('is-count',${phase==='invite'});
+          document.querySelector('#callout-label').textContent=${JSON.stringify(phase==='done'?'Раунд за Быничем.':phase==='invite'?'4':phase==='toss'?'Первым мычит Бынич!':'МЫЧИ')};
+          document.querySelector('#player-window').hidden=${phase!=='listen'}; document.querySelector('#bull-window').hidden=${phase!=='listen'};
+        })()`)
+        await assertMobileFit(insets)
+        if(phase==='listen') {
+          await assertArenaFocus(mode,width,height)
+          if(mode==='championship') {
+            await evaluate(`const app=document.querySelector('#app'); app.dataset.fury='4'; app.style.setProperty('--fury','4'); app.style.setProperty('--bull-column','100%')`)
+            await assertMobileFit(insets)
+          }
+        }
+      }
+    }
+  }
+  await call('Emulation.setSafeAreaInsetsOverride',{insets:{}})
+  await call('Emulation.setTouchEmulationEnabled', { enabled: false })
+  await call('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false })
+  await loaded(url)
+}
+
+async function checkMobileTouch(url) {
+  for(const mode of ['daily','championship']) {
+    await mobileViewport(390,844)
+    await loaded(mode==='daily'?url:`${url}#championship`)
+    await evaluate(`document.fonts.ready`)
+    await evaluate(`window.__coinValue=.25`)
+    await touch('#go')
+    await until(()=>evaluate(`typeof window.__denyMic==='function'`),'mobile microphone request')
+    await evaluate(`window.__denyMic()`)
+    await until(()=>evaluate(`document.querySelector('#app').dataset.cue==='moo'`),'mobile player window')
+    await touch('#go','hold')
+    await until(()=>evaluate(`document.querySelector('#fighter-you').classList.contains('is-hot')`),'touch hold gives power')
+    await call('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]})
+    await until(()=>evaluate(`!document.querySelector('#fighter-you').classList.contains('is-hot')`),'cancel stops power')
+    await touch('#go','hold')
+    await until(()=>evaluate(`document.querySelector('#fighter-you').classList.contains('is-hot')`),'second touch gives power')
+    await call('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:8,y:8,id:1}]})
+    await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+    await until(()=>evaluate(`!document.querySelector('#fighter-you').classList.contains('is-hot')`),'release outside stops power')
+    await mobileViewport(844,390)
+    await assertMobileFit()
+    await until(()=>evaluate(`document.querySelector('#app').dataset.cue==='moo'`),'player window after rotation')
+    await touch('#go','hold')
+    await until(async()=>(await state()).phase==='done','touch round ends',20000)
+    await until(async()=>!(await state()).hidden,'mobile result action appears')
+    await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+    await pause(200)
+    assert.equal((await state()).phase,'done','releasing a round hold must not click the new result action')
+    await assertMobileFit()
+    await touch('#go')
+    assert.equal((await state()).phase,'toss','a fresh tap must start exactly one new encounter')
+    await touch(`.mode-nav [data-mode="${mode==='daily'?'championship':'daily'}"]`)
+    assert.equal((await state()).phase,undefined,'touch mode switch must cancel the pending round')
+  }
+  await mobileViewport(390,844)
+  await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
+  await loaded(`${url}#championship`)
+  await evaluate(`window.__coinValue=.25`)
+  await touch('#go')
+  await until(()=>evaluate(`typeof window.__denyMic==='function'`),'championship microphone request')
+  await evaluate(`window.__denyMic()`)
+  let held=false
+  const deadline=Date.now()+20000
+  while((await state()).phase!=='done' && Date.now()<deadline) {
+    const want=await evaluate(`document.querySelector('#app').dataset.cue==='moo'`)
+    if(want && !held) { await touch('#go','hold'); held=true }
+    else if(!want && held) { await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}); held=false }
+    await pause(80)
+  }
+  if(held)await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+  assert.equal((await state()).phase,'done','touch-controlled championship encounter must finish')
+  await until(async()=>(await state()).button==='Следующая встреча ↗','touch-controlled victory unlocks next opponent')
+  await touch('#go')
+  assert.equal((await state()).phase,'toss')
+  assert.equal(await evaluate(`document.querySelector('#app').dataset.fury`),'1','one tap starts the next opponent')
+  await touch('.mode-nav [data-mode="daily"]')
+  await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
+  await call('Emulation.setTouchEmulationEnabled',{enabled:false})
+  await call('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false})
+  await loaded(url)
+  console.log('PASS: genuine mobile touches hold, cancel, release outside, rotate and require a fresh result tap')
+}
+
 async function assertRoundTimer(expected) {
   const timer = await evaluate(`(() => {
     const track = document.querySelector('.clock'), label = document.querySelector('#clock-label');
@@ -508,11 +630,14 @@ try {
   await assertReadableHeadings(url)
   await assertRoundTimerLayout()
   await assertStableRoundLayout(url)
+  await checkMobileLayouts(url)
   await call('Network.setBlockedURLs', { urls: [] })
   await call('Network.setCacheDisabled', { cacheDisabled: false })
   await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
   await assertStableRoundLayout(url)
   await call('Emulation.setEmulatedMedia', { features: [] })
+  await checkMobileLayouts(url)
+  await checkMobileTouch(url)
   console.log('PASS: folk-punk print identity, readable controls, local Cyrillic font and font-failure fallback')
   const rhythmProgress = await call('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 2 }))` })
   await loaded(`${url}#championship`)
@@ -1066,9 +1191,9 @@ try {
     };
   ` })
   await loaded(url)
-  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
+  await mobileViewport(390,844)
   await watchRoundLayout()
-  await evaluate(`document.querySelector('#go').click()`)
+  await touch('#go')
   await until(async () => (await state()).hidden, 'microphone mode hides fallback control')
   assert.equal((await state()).privacy, '', 'working microphone needs no routine status footer')
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'live')`), true)
@@ -1095,6 +1220,8 @@ try {
   await until(async () => !(await state()).hidden && (await state()).button === 'Ещё раунд ↗', 'microphone replay')
   await assertWatchedRoundLayout()
   console.log('PASS: real Chrome fake microphone opens, fallback hides, tracks close, replay returns')
+  await call('Emulation.setTouchEmulationEnabled',{enabled:false})
+  await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false})
   const unavailableReference = await call('Page.addScriptToEvaluateOnNewDocument', { source: `window.RTCPeerConnection = undefined;` })
   await loaded(url)
   await evaluate(`document.querySelector('#go').click()`)
