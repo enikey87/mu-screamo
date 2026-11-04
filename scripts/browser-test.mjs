@@ -311,6 +311,50 @@ try {
       return new Promise((_, reject) => { window.__denyMic = () => reject(new DOMException('Denied', 'NotAllowedError')); });
     };
   ` })
+  await loaded(url)
+  await evaluate(`document.fonts.ready`)
+  const print = await evaluate(`(() => {
+    const css = selector => getComputedStyle(document.querySelector(selector));
+    return { paper: css('#app').backgroundColor, ink: css('#app').color,
+      type: css('#callout').fontFamily, loaded: [...document.fonts].some(face => face.family === 'Oswald' && face.status === 'loaded'),
+      scene: getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage,
+      buttons: [...document.querySelectorAll('.mode-nav button, #go')].map(node => node.getBoundingClientRect().height) };
+  })()`)
+  assert.equal(print.paper, 'rgb(244, 231, 208)', 'redesign must use warm print paper')
+  assert.equal(print.ink, 'rgb(23, 62, 49)')
+  assert.ok(print.type.includes('Oswald') && print.loaded, 'Cyrillic display type must load from the bundled font')
+  assert.ok(print.scene.includes('arena-fence.webp'), 'daily duel must share the printed arena art')
+  assert.equal(print.buttons.length, 3)
+  assert.ok(print.buttons.every(height => height >= 44), 'primary controls need generous touch targets')
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await evaluate(`document.querySelector('#go').focus()`)
+  assert.equal(await evaluate(`document.querySelector('#go').matches(':focus-visible') && parseFloat(getComputedStyle(document.querySelector('#go')).outlineWidth) >= 2`), true, 'print treatment must retain visible keyboard focus')
+  const bars = await evaluate(`['.player-window__track', '.bull-window__track'].map(selector => {
+    const css = getComputedStyle(document.querySelector(selector)); return { height: parseFloat(css.height), border: parseFloat(css.borderTopWidth) };
+  })`)
+  assert.equal(bars.length, 2)
+  assert.ok(bars.every(bar => bar.height >= 10 && bar.border >= 2), 'both breathing bars need the same substantial printed frame')
+  const timerPaper = await evaluate(`['#player-window', '#bull-window'].map(selector => getComputedStyle(document.querySelector(selector)).backgroundColor)`)
+  assert.deepEqual(timerPaper, [print.paper, print.paper], 'timer text needs opaque paper above the detailed scenery')
+  await call('Network.enable')
+  await call('Network.setCacheDisabled', { cacheDisabled: true })
+  await call('Network.setBlockedURLs', { urls: ['*oswald*.ttf*'] })
+  await loaded(url)
+  await evaluate(`document.fonts.ready`)
+  assert.equal(await evaluate(`[...document.fonts].some(face => face.family === 'Oswald' && face.status === 'error')`), true, 'fallback scenario must actually block the display font')
+  for (const [width, height] of [[280, 560], [390, 844], [1280, 900]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    assert.equal(await evaluate(`(() => {
+      const go = document.querySelector('#go'), title = document.querySelector('#callout');
+      const box = go.getBoundingClientRect();
+      return !go.disabled && title.scrollWidth <= title.clientWidth && box.bottom <= innerHeight && document.documentElement.scrollWidth <= innerWidth;
+    })()`), true, 'font failure must preserve readable entry and playable controls')
+  }
+  await assertStableCues('daily with missing display font')
+  await call('Network.setBlockedURLs', { urls: [] })
+  await call('Network.setCacheDisabled', { cacheDisabled: false })
+  console.log('PASS: folk-punk print identity, readable controls, local Cyrillic font and font-failure fallback')
   const rhythmProgress = await call('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 2 }))` })
   await loaded(`${url}#championship`)
   const rhythmCases = [
@@ -579,7 +623,7 @@ try {
   assert.equal((await state()).disabled, false)
   await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
   assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
+  assert.match(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), /arena-fence\.webp/)
   await call('Network.setBlockedURLs', { urls: [] })
   await call('Network.setCacheDisabled', { cacheDisabled: false })
   await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
@@ -670,7 +714,7 @@ try {
   console.log('PASS: actual offline audio gets louder and more split; inhales and stop are silent')
 
   assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
+  assert.match(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), /arena-fence\.webp/)
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#scoreboard').hidden`), true)
   assert.equal(await evaluate(`
@@ -696,7 +740,7 @@ try {
     assert.ok(layout.buttonRight <= width && layout.buttonBottom <= layout.appBottom, `button outside poster at ${width}×${height}`)
     if (height >= 568) assert.ok(layout.buttonBottom <= height, `button below screen at ${width}×${height}`)
     assert.ok(layout.titleFits, `headline overflow at ${width}×${height}`)
-    assert.equal(layout.paper, 'rgb(246, 238, 206)')
+    assert.equal(layout.paper, 'rgb(244, 231, 208)')
     if (width === 390 || width === 1280) await screenshot(`idle-${width}`)
   }
   console.log('PASS: entry copy, assets, and layout at five screen sizes')
@@ -1066,7 +1110,7 @@ try {
   assert.match((await state()).button, /Принять вызов/)
   assert.equal(await evaluate(`document.querySelector('#stage-path').hidden && document.querySelector('#air').hidden`), true)
   assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), 'none')
+  assert.match(await evaluate(`getComputedStyle(document.querySelector('.arena'), '::before').backgroundImage`), /arena-fence\.webp/)
   console.log('PASS: campaign completion, replay without losing unlocks, and return to daily duel')
 
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
