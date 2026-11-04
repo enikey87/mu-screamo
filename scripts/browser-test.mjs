@@ -201,6 +201,29 @@ async function assertArenaFocus(mode, width, height) {
   assert.ok(layout.font >= (width >= 1000 ? 40 : 22), 'central command must be large')
 }
 
+async function assertResultClear() {
+  assert.equal((await state()).phase, 'done')
+  for (const [width, height] of [[280, 560], [320, 568], [375, 667], [390, 844], [844, 390], [1000, 768], [1280, 720], [1920, 1080]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    const results = await evaluate(`(() => {
+      const label = document.querySelector('#callout-label'), original = label.textContent;
+      const box = node => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; };
+      const result = ['Луг за тобой.', 'Раунд за Быничем.', 'Ничья.', 'Нокаут!', 'Чемпион луга!'].map(text => {
+        label.textContent = text;
+        const range = document.createRange(); range.selectNodeContents(label);
+        return { text, label: box(range), bulls: [...document.querySelectorAll('.fighter__body')].map(box), app: box(document.querySelector('#app')) };
+      });
+      label.textContent = original; return result;
+    })()`)
+    assert.equal(results.length, 5)
+    for (const item of results) {
+      assert.equal(item.bulls.length, 2)
+      assert.ok(item.bulls.every(bull => item.label.bottom + 8 <= bull.top), `result text must stay above both bulls at ${width}×${height}: ${JSON.stringify(item)}`)
+      assert.ok(item.label.left >= item.app.left && item.label.right <= item.app.right && item.label.top >= item.app.top, 'result text must fit inside the scene')
+    }
+  }
+}
+
 async function assertFear(you, bull) {
   const actual = await evaluate(`['you', 'bull'].map(side => {
     const fighter = document.querySelector('#fighter-' + side);
@@ -678,6 +701,7 @@ try {
   await assertFear(0, 0)
   assert.equal(await evaluate(`document.querySelector('#player-meter').getAttribute('aria-valuenow')`), '0')
   assert.equal(await fearDisplacement('bull'), null)
+  await assertResultClear()
   await screenshot('win')
   console.log('PASS: permission pending → denied → countdown → hold → win → replay')
 
@@ -697,6 +721,7 @@ try {
   assert.equal((await state()).loser, 'fighter-you')
   await until(async () => (await state()).button === 'Ещё раунд ↗', 'replay after loss')
   await assertAdvantage('bull', (await state()).finish === 'knockout' ? 'Бынич победил нокаутом' : 'Бынич победил')
+  await assertResultClear()
   await screenshot('loss')
   console.log('PASS: replay resets state, remembers denial, and reports loss without holding')
 
@@ -912,10 +937,10 @@ try {
   console.log('PASS: campaign loss retries the same encounter without unlocking anything')
   await assertScene(...stageScenes[0])
 
-  async function winEncounter(key = '', first = 'bull') {
+  async function winEncounter(key = '', first = 'bull', alreadyStarted = false) {
     await evaluate(`(() => {
       window.__coinValue = ${first === 'you' ? .25 : .75};
-      document.querySelector('#go').click();
+      if (!${alreadyStarted}) document.querySelector('#go').click();
       let held = false;
       const timer = setInterval(() => {
         const app = document.querySelector('#app');
@@ -936,11 +961,17 @@ try {
     await until(async () => (await state()).phase === 'done', 'timed championship win')
     assert.ok((await state()).meter > 8, `timed input must win: ${JSON.stringify(await state())}`)
     await until(async () => !(await state()).hidden, 'championship result action')
+    await assertResultClear()
   }
 
   for (let stage = 0; stage < 5; stage++) {
     if (stage === 1) await loaded(`${url}#championship`)
-    else if (stage > 1) await evaluate(`document.querySelector('#go').click()`)
+    else if (stage > 1) {
+      await evaluate(`window.__coinValue = ${stage % 2 === 1 ? .25 : .75}; document.querySelector('#go').click()` )
+      assert.equal((await state()).phase, 'toss', 'one click must start the next encounter; repeated click must not skip it')
+      assert.equal((await state()).disabled, true)
+      await evaluate(`document.querySelector('#go').click()`)
+    }
     assert.equal(await evaluate(`document.querySelector('#app').dataset.fury`), String(stage))
     await assertScene(...stageScenes[stage])
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
@@ -951,7 +982,7 @@ try {
       assert.equal(await evaluate(`getComputedStyle(document.querySelector('.bull__championship')).filter`), 'none')
     }
     await screenshot(`championship-stage-${stage + 1}`)
-    await winEncounter(stage === 0 ? ' ' : stage === 1 ? 'Enter' : '', stage % 2 === 1 ? 'you' : 'bull')
+    await winEncounter(stage === 0 ? ' ' : stage === 1 ? 'Enter' : '', stage % 2 === 1 ? 'you' : 'bull', stage > 1)
     await assertScene(...stageScenes[stage])
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), stage + 1)
     assert.equal(await evaluate(`document.querySelectorAll('.stage-step.is-cleared').length`), stage + 1)
@@ -963,6 +994,8 @@ try {
   await screenshot('championship-finale')
   await evaluate(`document.querySelector('#go').click()`)
   assert.equal(await evaluate(`document.querySelector('#app').dataset.fury`), '0')
+  assert.equal((await state()).phase, 'toss', 'restart must start the first encounter immediately')
+  await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click(); document.querySelector('.mode-nav [data-mode="championship"]').click()` )
   assert.equal(await evaluate(`document.querySelectorAll('.stage-step:not(:disabled)').length`), 5)
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 5)
   await evaluate(`document.querySelector('.stage-step[data-stage="4"]').click()`)

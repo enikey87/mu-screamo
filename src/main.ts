@@ -199,7 +199,6 @@ go.addEventListener('click', () => {
   if (mode === 'championship' && wonStage) {
     stageIndex = stageIndex < STAGES.length - 1 ? stageIndex + 1 : 0
     preview()
-    return
   }
   void start()
 })
