@@ -201,6 +201,61 @@ async function assertArenaFocus(mode, width, height) {
   assert.ok(layout.font >= (width >= 1000 ? 40 : 22), 'central command must be large')
 }
 
+async function assertReadableHeadings(url) {
+  const luminance = rgb => rgb.slice(0, 3).map(value => {
+    const channel = value / 255
+    return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4
+  }).reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0)
+  for (const [mode, scene] of [['daily', 'fence'], ['championship', 'fence'], ['championship', 'yard'], ['championship', 'evening']]) {
+    await loaded(mode === 'daily' ? url : `${url}#championship`)
+    await evaluate(`document.fonts.ready`)
+    await evaluate(`document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '* { animation: none !important; transition: none !important; }' }))`)
+    if (mode === 'championship') await evaluate(`document.querySelector('#app').dataset.scene = ${JSON.stringify(scene)}`)
+    const intros = mode === 'daily' ? ['Ну что,<br>кто кого?'] : ['Разминка.', 'Упрямство.', 'Вызов.', 'Ярость.', 'Финал.', 'Реванш чемпиона.']
+    const cases = [
+      ...intros.map(text => [null, '', text]),
+      ...['Первым мычишь ты!', 'Первым мычит Бынич!'].map(text => ['toss', '', text]),
+      ...['4', '3', '2', '1'].map(text => ['invite', 'count', text]),
+      ...[['moo', 'МЫЧИ'], ['moo', 'Держи!'], ['pause', 'ПАУЗА'], ['ready', 'ЖДИ']].map(([cue, text]) => ['listen', cue, text]),
+      ...['Луг за тобой.', 'Раунд за Быничем.', 'Ничья.', 'Нокаут!', 'Чемпион луга!'].map(text => ['done', '', text]),
+    ]
+    for (const [width, height] of [[280, 560], [390, 844], [1280, 720], [1920, 1080]]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+      const headings = await evaluate(`(() => {
+        const app = document.querySelector('#app'), label = document.querySelector('#callout-label'), title = label.parentElement;
+        const box = node => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+        return ${JSON.stringify(cases)}.map(([phase, cue, text]) => {
+          if (phase) app.dataset.phase = phase; else delete app.dataset.phase;
+          app.dataset.cue = cue; label.innerHTML = text; title.classList.toggle('is-count', cue === 'count');
+          const css = getComputedStyle(label), range = document.createRange(); range.selectNodeContents(label);
+          return { text, phase, fg: css.color.match(/[\\d.]+/g).map(Number), bg: css.backgroundColor.match(/[\\d.]+/g).map(Number),
+            opacity: Number(css.opacity), plate: box(label), ink: box(range), app: box(app),
+            bulls: [...document.querySelectorAll('.fighter__body')].map(box) };
+        });
+      })()`)
+      assert.ok(headings.length >= 16, 'all instruction phases must be exercised')
+      for (const heading of headings) {
+        const detail = `${mode}/${scene} ${width}×${height}: ${JSON.stringify(heading)}`
+        assert.equal(heading.bg[3] ?? 1, 1, `heading needs opaque paper: ${detail}`)
+        assert.equal(heading.opacity, 1, `heading surface must remain opaque: ${detail}`)
+        assert.equal(heading.fg[3] ?? 1, 1, `heading ink must remain opaque: ${detail}`)
+        const fg = luminance(heading.fg), bg = luminance(heading.bg)
+        assert.ok((Math.max(fg, bg) + .05) / (Math.min(fg, bg) + .05) >= 4.5, `heading needs readable contrast: ${detail}`)
+        assert.ok(heading.ink.left >= heading.plate.left - .5 && heading.ink.right <= heading.plate.right + .5 && heading.ink.top >= heading.plate.top - .5 && heading.ink.bottom <= heading.plate.bottom + .5, `paper must cover all text: ${detail}`)
+        assert.ok(heading.plate.left >= heading.app.left && heading.plate.right <= heading.app.right, `heading paper must fit the scene: ${detail}`)
+        assert.equal(heading.bulls.length, 2)
+        if (heading.phase === 'listen' || heading.phase === 'invite') {
+          assert.ok(heading.plate.left >= heading.bulls[0].right - 3 && heading.plate.right <= heading.bulls[1].left + 3, `live paper must stay between bulls: ${detail}`)
+        } else if (!heading.phase || heading.phase === 'done') {
+          assert.ok(heading.bulls.every(bull => heading.plate.bottom <= bull.top), `heading paper must stay above bulls: ${detail}`)
+        }
+      }
+    }
+  }
+  await loaded(url)
+  await evaluate(`document.fonts.ready`)
+}
+
 async function assertResultClear() {
   assert.equal((await state()).phase, 'done')
   for (const [width, height] of [[280, 560], [320, 568], [375, 667], [390, 844], [844, 390], [1000, 768], [1280, 720], [1920, 1080]]) {
@@ -337,6 +392,7 @@ try {
   assert.ok(bars.every(bar => bar.height >= 10 && bar.border >= 2), 'both breathing bars need the same substantial printed frame')
   const timerPaper = await evaluate(`['#player-window', '#bull-window'].map(selector => getComputedStyle(document.querySelector(selector)).backgroundColor)`)
   assert.deepEqual(timerPaper, [print.paper, print.paper], 'timer text needs opaque paper above the detailed scenery')
+  await assertReadableHeadings(url)
   await call('Network.enable')
   await call('Network.setCacheDisabled', { cacheDisabled: true })
   await call('Network.setBlockedURLs', { urls: ['*oswald*.ttf*'] })
@@ -352,6 +408,7 @@ try {
     })()`), true, 'font failure must preserve readable entry and playable controls')
   }
   await assertStableCues('daily with missing display font')
+  await assertReadableHeadings(url)
   await call('Network.setBlockedURLs', { urls: [] })
   await call('Network.setCacheDisabled', { cacheDisabled: false })
   console.log('PASS: folk-punk print identity, readable controls, local Cyrillic font and font-failure fallback')
