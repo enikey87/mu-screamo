@@ -252,6 +252,59 @@ async function assertReadableHeadings(url) {
   await evaluate(`document.fonts.ready`)
 }
 
+async function assertStableRoundLayout(url) {
+  for (const mode of ['daily', 'championship']) {
+    await loaded(mode === 'daily' ? url : `${url}#championship`)
+    await evaluate(`document.fonts.ready`)
+    for (const [width, height] of [[280, 560], [390, 844], [1280, 720], [1920, 1080]]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+      const frames = await evaluate(`(() => {
+        const app = document.querySelector('#app'), go = document.querySelector('#go'), score = document.querySelector('#scoreboard');
+        const box = node => { let x=0, y=0, parent=node; while(parent) { x+=parent.offsetLeft; y+=parent.offsetTop; parent=parent.offsetParent; } return [x,y,node.offsetWidth,node.offsetHeight]; };
+        return [['toss','Готовимся к бою…'],['hush','Зажми и тяни'],['invite','Зажми и тяни'],['listen','Зажми и тяни'],['done','Ещё раунд ↗'],['done','Следующая встреча ↗'],['done','Пройти чемпионат снова ↗'],['done','Попробовать ещё ↗']].flatMap(([phase,text]) => [false,true].map(hidden => {
+          app.dataset.phase = phase; go.textContent = text; go.hidden = hidden; score.hidden = phase === 'toss';
+          document.querySelector('#privacy').textContent = hidden && phase !== 'toss' && phase !== 'done' ? 'Лучше играть в наушниках.' : '';
+          document.querySelector('#callout').classList.toggle('is-count', phase === 'invite');
+          document.querySelector('#callout-label').textContent = phase === 'done' ? 'Раунд за Быничем.' : phase === 'invite' ? '4' : 'МЫЧИ';
+          document.querySelector('#player-window').hidden = phase !== 'listen'; document.querySelector('#bull-window').hidden = phase !== 'listen';
+          const range = document.createRange(); range.selectNodeContents(go); const ink=range.getBoundingClientRect(), button=go.getBoundingClientRect();
+          return { phase, hidden, fits: ink.left >= button.left+2 && ink.right <= button.right-2 && ink.top >= button.top+2 && ink.bottom <= button.bottom-2, buttonVisibility: getComputedStyle(go).visibility, scoreVisibility: getComputedStyle(score).visibility, boxes: [...document.querySelectorAll('.sheet,.arena,#scoreboard,.clock,.dock,#go,.fighter-status,.fighter__body')].map(box) };
+        }));
+      })()`)
+      assert.equal(frames.length, 16)
+      for (const frame of frames) {
+        assert.ok(frame.fits, `button label must fit at ${mode} ${width}×${height}: ${JSON.stringify(frame)}`)
+        assert.equal(frame.buttonVisibility, frame.hidden ? 'hidden' : 'visible', 'reserved button space must not expose hidden controls')
+        assert.equal(frame.scoreVisibility, frame.phase === 'toss' ? 'hidden' : 'visible')
+        assert.deepEqual(frame.boxes, frames[0].boxes, `round layout must stay fixed at ${mode} ${width}×${height}: ${frame.phase}, hidden button=${frame.hidden}`)
+      }
+    }
+  }
+  await loaded(url)
+}
+
+async function watchRoundLayout() {
+  await evaluate(`document.fonts.ready`)
+  await evaluate(`(() => {
+    cancelAnimationFrame(window.__roundFrame); window.__roundLayout = []; window.__roundFrameCount = 0;
+    const sample = () => {
+      const box = node => { let x=0,y=0,parent=node; while(parent) { x+=parent.offsetLeft; y+=parent.offsetTop; parent=parent.offsetParent; } return [x,y,node.offsetWidth,node.offsetHeight]; };
+      const frame = { phase: document.querySelector('#app').dataset.phase, boxes: [...document.querySelectorAll('.sheet,.arena,#scoreboard,.clock,.dock,#go,.fighter-status,.fighter__body')].map(box) };
+      window.__roundFrameCount++;
+      if (JSON.stringify(frame) !== JSON.stringify(window.__roundLayout.at(-1))) window.__roundLayout.push(frame);
+      window.__roundFrame = requestAnimationFrame(sample);
+    }; window.__roundFrame = requestAnimationFrame(sample);
+  })()`)
+}
+
+async function assertWatchedRoundLayout() {
+  const captured = await evaluate(`cancelAnimationFrame(window.__roundFrame); ({ frames: window.__roundLayout, count: window.__roundFrameCount })`)
+  const frames = captured.frames.slice(captured.frames.findIndex(frame => frame.phase === 'toss'))
+  assert.ok(captured.count > 100 && frames.length >= 5, 'must sample an actual round frame by frame')
+  assert.deepEqual([...new Set(frames.map(frame => frame.phase))], ['toss','hush','invite','listen','done'])
+  for (const frame of frames) assert.deepEqual(frame.boxes, frames[0].boxes, `actual round layout shifted in ${frame.phase}`)
+}
+
 async function assertRoundTimer(expected) {
   const timer = await evaluate(`(() => {
     const track = document.querySelector('.clock'), label = document.querySelector('#clock-label');
@@ -436,6 +489,7 @@ try {
   assert.deepEqual(timerPaper, [print.paper, print.paper], 'timer text needs opaque paper above the detailed scenery')
   await assertReadableHeadings(url)
   await assertRoundTimerLayout()
+  await assertStableRoundLayout(url)
   await call('Network.enable')
   await call('Network.setCacheDisabled', { cacheDisabled: true })
   await call('Network.setBlockedURLs', { urls: ['*oswald*.ttf*'] })
@@ -453,8 +507,12 @@ try {
   await assertStableCues('daily with missing display font')
   await assertReadableHeadings(url)
   await assertRoundTimerLayout()
+  await assertStableRoundLayout(url)
   await call('Network.setBlockedURLs', { urls: [] })
   await call('Network.setCacheDisabled', { cacheDisabled: false })
+  await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  await assertStableRoundLayout(url)
+  await call('Emulation.setEmulatedMedia', { features: [] })
   console.log('PASS: folk-punk print identity, readable controls, local Cyrillic font and font-failure fallback')
   const rhythmProgress = await call('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 2 }))` })
   await loaded(`${url}#championship`)
@@ -464,6 +522,7 @@ try {
     { draws: [.25, .99], starter: 'you', onsets: [2100, 5000, 7100], windows: [0, 2100, 3500, 5000, 6000, 7100], inhale: 2100 },
   ]
   for (const [attempt, expected] of rhythmCases.entries()) {
+    await watchRoundLayout()
     await evaluate(`(() => {
       window.__draws = ${JSON.stringify(expected.draws)}; window.__breathChanges = [];
       const audio = window.__gameContexts.at(-1);
@@ -501,6 +560,7 @@ try {
       assert.ok(Math.abs(change.at - expected.windows[index]) < 100, `visible breath must follow the frozen audio plan: ${JSON.stringify(changes)}`)
     }
     await until(async () => !(await state()).hidden, 'retry selected rhythm')
+    await assertWatchedRoundLayout()
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 2, 'a different pattern must not grant progress')
     console.log(`PASS: championship rhythm ${attempt + 1} keeps audio, windows and timer synchronized`)
   }
@@ -1006,6 +1066,8 @@ try {
     };
   ` })
   await loaded(url)
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
+  await watchRoundLayout()
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).hidden, 'microphone mode hides fallback control')
   assert.equal((await state()).privacy, '', 'working microphone needs no routine status footer')
@@ -1031,6 +1093,7 @@ try {
   assert.equal(await evaluate(`window.__micTracks.length > 0 && window.__micTracks.every(t => t.readyState === 'ended')`), true)
   assert.equal((await state()).privacy, '', 'result should not repeat the round-ended message')
   await until(async () => !(await state()).hidden && (await state()).button === 'Ещё раунд ↗', 'microphone replay')
+  await assertWatchedRoundLayout()
   console.log('PASS: real Chrome fake microphone opens, fallback hides, tracks close, replay returns')
   const unavailableReference = await call('Page.addScriptToEvaluateOnNewDocument', { source: `window.RTCPeerConnection = undefined;` })
   await loaded(url)
@@ -1207,8 +1270,11 @@ try {
   assert.equal((await state()).title, (await state()).finish === 'knockout' ? 'Нокаут!' : 'Раунд за Быничем.')
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bynich.championship.v1')).cleared`), 5)
   await until(async () => (await state()).button === 'Попробовать ещё ↗', 'hard encounter retry')
+  await watchRoundLayout()
   await evaluate(`document.querySelector('#go').click()`)
   await until(async () => (await state()).phase === 'done', 'quiet player is knocked out by the final bull')
+  await until(async () => !(await state()).hidden, 'knockout result action returns')
+  await assertWatchedRoundLayout()
   assert.equal((await state()).finish, 'knockout')
   await assertRoundTimer('Нокаут')
   assert.equal((await state()).title, 'Нокаут!')
