@@ -319,12 +319,13 @@ async function touch(selector, type = 'tap') {
 
 async function assertMobileFit(insets = {}) {
   const view = await evaluate(`(() => {
-    const visible = [...document.querySelectorAll('.sheet,.arena,#go,.gauge,.clock,.mode-nav button,.stage-step,.player-window,.bull-window,.fighter__body,.bull__championship,#save-notice')].filter(n=>getComputedStyle(n).visibility!=='hidden' && n.getBoundingClientRect().height>0 && !n.closest('.app.is-ko .fighter.is-lose'));
+    const visible = [...document.querySelectorAll('.sheet,.arena,#go,.gauge,.clock,.mode-nav button,.stage-step,.player-window,.bull-window,.fighter__body,.bull__championship,#save-notice,.arena-tip,.precision-mark')].filter(n=>getComputedStyle(n).visibility!=='hidden' && n.getBoundingClientRect().height>0 && !n.closest('.app.is-ko .fighter.is-lose'));
     const box=n=>{const r=n.getBoundingClientRect();return {name:n.id||n.className,left:r.left,right:r.right,top:r.top,bottom:r.bottom}};
-    return {width:visualViewport.width,height:visualViewport.height,scale:visualViewport.scale,scroll:document.documentElement.scrollWidth,inner:innerWidth,touch:navigator.maxTouchPoints,coarse:matchMedia('(pointer:coarse)').matches,boxes:visible.map(box),buttonTextFits:(()=>{const go=document.querySelector('#go'),r=go.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(go);const ink=range.getBoundingClientRect();return ink.left>=r.left+2&&ink.right<=r.right-2&&ink.top>=r.top+2&&ink.bottom<=r.bottom-2})()};
+    return {width:visualViewport.width,height:visualViewport.height,scale:visualViewport.scale,scroll:document.documentElement.scrollWidth,inner:innerWidth,touch:navigator.maxTouchPoints,coarse:matchMedia('(pointer:coarse)').matches,boxes:visible.map(box),tipClear:(()=>{const tip=document.querySelector('#arena-tip');if(tip.hidden)return true;const range=document.createRange();range.selectNodeContents(tip);return range.getBoundingClientRect().bottom+2<=document.querySelector('.fighter-status').getBoundingClientRect().top})(),buttonTextFits:(()=>{const go=document.querySelector('#go'),r=go.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(go);const ink=range.getBoundingClientRect();return ink.left>=r.left+2&&ink.right<=r.right-2&&ink.top>=r.top+2&&ink.bottom<=r.bottom-2})()};
   })()`)
   assert.ok(view.touch > 0 && view.coarse && view.scale === 1, `must run in touch mobile emulation: ${JSON.stringify(view)}`)
   assert.ok(view.scroll <= view.inner, `mobile horizontal overflow: ${JSON.stringify(view)}`)
+  assert.ok(view.tipClear, `tactic tip must remain above the fighters: ${JSON.stringify(view)}`)
   assert.ok(view.buttonTextFits, `mobile button text must fit: ${JSON.stringify(view)}`)
   for(const box of view.boxes) assert.ok(box.left >= (insets.left ?? 0) && box.right <= view.width-(insets.right ?? 0)+.5 && box.top >= (insets.top ?? 0) && box.bottom <= view.height-(insets.bottom ?? 0)+.5, `mobile controls must fit the visible viewport: ${JSON.stringify(view)}`)
 }
@@ -341,6 +342,7 @@ async function checkMobileLayouts(url) {
         await evaluate(`(() => {
           const app=document.querySelector('#app'); app.dataset.phase=${JSON.stringify(phase)};
           document.querySelector('#scoreboard').hidden=${phase==='toss'};
+          document.querySelector('#arena-tip').hidden=${phase!=='toss' && phase!=='invite'}; document.querySelector('#arena-tip').textContent='Долго отдыхает. Закончи «му» по сигналу — получишь рывок.';
           document.querySelector('#save-notice').hidden=${phase!=='done'};
           document.querySelector('#go').textContent=${JSON.stringify(phase==='done'?(mode==='championship'?'Пройти чемпионат снова ↗':'Ещё раунд ↗'):'Зажми и тяни')};
           document.querySelector('#callout').classList.toggle('is-count',${phase==='invite'});
@@ -425,6 +427,75 @@ async function checkMobileTouch(url) {
   await call('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false})
   await loaded(url)
   console.log('PASS: genuine mobile touches hold, cancel, release outside, rotate and require a fresh result tap')
+}
+
+async function checkPrecisionPlay(url) {
+  const unlock = await call('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 1 }))` })
+  for (const reduced of [false, true]) {
+    await mobileViewport(390,844)
+    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduced?'reduce':'no-preference' }] })
+    await loaded(`${url}#championship`)
+    await evaluate(`window.__draws=[.75,0]`)
+    await watchRoundLayout()
+    await touch('#go')
+    assert.match(await evaluate(`document.querySelector('#arena-tip').textContent`), /Усиливает выдох/)
+    assert.equal(await evaluate(`document.querySelector('#arena-tip').hidden`), false)
+    await until(()=>evaluate(`typeof window.__denyMic==='function'`),'precision microphone request')
+    await evaluate(`window.__denyMic()`)
+    await until(()=>evaluate(`document.querySelector('#app').dataset.move==='surge'`),'stubborn bull visibly builds pressure')
+    assert.equal(await evaluate(`document.querySelector('#bull-name').textContent`),'Упёрся!')
+    await until(()=>evaluate(`document.querySelector('#app').dataset.cue==='moo'`),'precise phrase begins')
+    const starts = await evaluate(`window.__gameContexts[0].__starts.length`)
+    await touch('#go','hold')
+    await until(()=>evaluate(`document.querySelector('#app').dataset.breath==='voice'`),'precise phrase ends')
+    await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+    await until(()=>evaluate(`document.querySelector('#app').classList.contains('is-perfect')`),'confirmed precise phrase rewards a rope jerk')
+    await until(()=>evaluate(`parseFloat(getComputedStyle(document.querySelector('.precision-mark')).opacity)>.1`),'precision reward becomes visible')
+    const reaction = await evaluate(`(() => {
+      const bull=document.querySelector('#bull-bull'), mark=document.querySelector('.precision-mark');
+      return { title:document.querySelector('#callout-label').textContent, tipHidden:document.querySelector('#arena-tip').hidden, name:document.querySelector('#bull-name').textContent,
+        bell:window.__gameContexts[0].__starts.length, stumble:bull.getAnimations().some(a=>a.animationName==='bull-slip'), mark:mark.textContent, ink:parseFloat(getComputedStyle(mark).opacity), outline:getComputedStyle(bull).outlineStyle };
+    })()`)
+    assert.equal(reaction.title,'ПАУЗА','reward must preserve the current player instruction')
+    assert.equal(reaction.tipHidden,true)
+    assert.equal(reaction.name,'Ой!')
+    assert.equal(reaction.bell,starts+2,'one reward plays one two-part bell')
+    assert.equal(reaction.stumble,!reduced)
+    if(reduced) assert.equal(reaction.outline,'dashed')
+    assert.equal(reaction.mark,'МЕТКО!')
+    assert.ok(reaction.ink>.1,'precision feedback must actually be visible')
+    await assertMobileFit()
+    await screenshot(reduced?'precision-phone-reduced':'precision-phone')
+    await until(()=>evaluate(`!document.querySelector('#app').classList.contains('is-perfect')`),'precision reaction clears')
+    assert.equal(await evaluate(`window.__gameContexts[0].__starts.length`),starts+2,'one phrase must not ring repeatedly')
+    if(!reduced) {
+      await call('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5})
+      let held=false, braced=false;
+      const deadline=Date.now()+15000;
+      while((await state()).phase!=='done' && Date.now()<deadline) {
+        const want=await evaluate(`document.querySelector('#app').dataset.cue==='moo'`);
+        if(want && !held) { await touch('#go','hold'); held=true }
+        else if(!want && held) { await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}); held=false }
+        braced ||= await evaluate(`document.querySelector('#fighter-bull').classList.contains('is-braced') && parseFloat(getComputedStyle(document.querySelector('#fighter-bull .fighter__body'),'::before').opacity)>0`);
+        await pause(50);
+      }
+      if(held)await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+      assert.equal(braced,true,'a bull near defeat must plant its hooves and kick up dust')
+      assert.equal((await state()).loser,'fighter-bull')
+    }
+    await until(async()=>(await state()).phase==='done','precision scenario finishes')
+    await until(()=>evaluate(`window.__roundLayout.at(-1)?.phase==='done'`),'layout observer captures the terminal frame')
+    await assertWatchedRoundLayout()
+    await evaluate(`document.querySelector('.mode-nav [data-mode="daily"]').click()`)
+    assert.equal(await evaluate(`document.querySelector('#app').classList.contains('is-perfect') || document.querySelector('#fighter-bull').classList.contains('is-braced') || !document.querySelector('#arena-tip').hidden`),false)
+  }
+  await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:unlock.identifier})
+  await evaluate(`localStorage.removeItem('bynich.championship.v1')`)
+  await call('Emulation.setEmulatedMedia',{features:[]})
+  await call('Emulation.setTouchEmulationEnabled',{enabled:false})
+  await call('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false})
+  await loaded(url)
+  console.log('PASS: precise touch phrases trigger one bell, a stumble and readable feedback without shifting layout; reduced motion and reset work')
 }
 
 async function assertRoundTimer(expected) {
@@ -638,6 +709,7 @@ try {
   await call('Emulation.setEmulatedMedia', { features: [] })
   await checkMobileLayouts(url)
   await checkMobileTouch(url)
+  await checkPrecisionPlay(url)
   console.log('PASS: folk-punk print identity, readable controls, local Cyrillic font and font-failure fallback')
   const rhythmProgress = await call('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('bynich.championship.v1', JSON.stringify({ version: 1, cleared: 2 }))` })
   await loaded(`${url}#championship`)
@@ -934,18 +1006,34 @@ try {
   }
   const voiceModule = await audioModule('src/audio/voice.ts')
   const countModule = await audioModule('src/audio/count.ts')
+  const feedbackModule = await audioModule('src/audio/feedback.ts')
   const rendered = await evaluate(`(async () => {
     const { playBull } = await import(${JSON.stringify(voiceModule)});
     const { playCountdown } = await import(${JSON.stringify(countModule)});
+    const { playPrecision } = await import(${JSON.stringify(feedbackModule)});
     const routed = [];
     for (const muted of [false, true]) {
       const ctx = new OfflineAudioContext(1, 144000, 48000);
       const bus = ctx.createGain(); bus.gain.value = muted ? 0 : 1; bus.connect(ctx.destination);
       playBull(ctx, { pitch: 110, fury: 4, segments: [{ kind: 'voice', ms: 1000 }] }, .1, bus);
       playCountdown(ctx, 0, bus);
+      playPrecision(ctx, bus);
       const data = (await ctx.startRendering()).getChannelData(0);
       routed.push(data.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0));
     }
+    const tactics = [];
+    for (const pressure of [[.6,1.4],[1.45,.55]]) {
+      const ctx=new OfflineAudioContext(1,96000,48000);
+      playBull(ctx,{pitch:110,fury:1,segments:[{kind:'voice',ms:1600,pressure},{kind:'inhale',ms:400}]},0);
+      const data=(await ctx.startRendering()).getChannelData(0);
+      const rms=(a,b)=>Math.sqrt(data.slice(a*48000,b*48000).reduce((sum,x)=>sum+x*x,0)/((b-a)*48000));
+      tactics.push({early:rms(.35,.65),late:rms(.9,1.2),tail:rms(1.7,1.9)});
+    }
+    const bellContext=new OfflineAudioContext(1,48000,48000); playPrecision(bellContext);
+    const bellData=(await bellContext.startRendering()).getChannelData(0);
+    const bell={peak:Math.max(...bellData.map(Math.abs)),tail:Math.max(...bellData.slice(18000).map(Math.abs))};
+    const cancelledBell=new OfflineAudioContext(1,48000,48000); const stopBell=playPrecision(cancelledBell); stopBell(); stopBell();
+    const stoppedBellPeak=Math.max(...(await cancelledBell.startRendering()).getChannelData(0).map(Math.abs));
     const results = [];
     for (const fury of [0, 1, 2, 3, 4]) {
       const ctx = new OfflineAudioContext(1, 96000, 48000);
@@ -983,7 +1071,7 @@ try {
     for (let i = 0; i < countData.length; i++) {
       if (Math.abs(countData[i]) > .01) { countOnsets.push(i / 48000); i += 14400; }
     }
-    return { countOnsets, routed, profiles: results, stoppedPeak: Math.max(...(await stopped.startRendering()).getChannelData(0).map(Math.abs)) };
+    return { countOnsets, routed, tactics, bell, stoppedBellPeak, profiles: results, stoppedPeak: Math.max(...(await stopped.startRendering()).getChannelData(0).map(Math.abs)) };
   })()`)
   console.log('Audio renders:', JSON.stringify(rendered))
   assert.equal(rendered.countOnsets.length, 5, 'all five countdown sounds must actually render')
@@ -1004,6 +1092,11 @@ try {
   }
   assert.ok(rendered.profiles[4].split > rendered.profiles[0].split + 0.05)
   assert.equal(rendered.stoppedPeak, 0)
+  assert.equal(rendered.stoppedBellPeak,0,'a cancelled bell must remain silent')
+  assert.ok(rendered.tactics[0].late > rendered.tactics[0].early * 1.5, 'stubborn voice must audibly strengthen')
+  assert.ok(rendered.tactics[1].early > rendered.tactics[1].late * 1.8, 'hothead voice must audibly fade')
+  assert.ok(rendered.tactics.every(t=>t.tail===0), 'tactics must keep inhale silent')
+  assert.ok(rendered.bell.peak > .02 && rendered.bell.peak < .3 && rendered.bell.tail===0, 'bell must be short and unclipped')
   console.log('PASS: actual offline audio gets louder and more split; inhales and stop are silent')
 
   assert.equal(await evaluate(`document.querySelector('#app').dataset.scene`), undefined)
@@ -1348,6 +1441,7 @@ try {
     assert.ok((await state()).meter > 8, `timed input must win: ${JSON.stringify(await state())}`)
     await until(async () => !(await state()).hidden, 'championship result action')
     await assertResultClear()
+    if((await state()).finish==='time') assert.equal(await evaluate(`getComputedStyle(document.querySelector('#bull-bull')).animationName`),'reluctant-bow','a timed defeat gets a reluctant bow')
   }
 
   for (let stage = 0; stage < 5; stage++) {

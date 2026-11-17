@@ -557,3 +557,27 @@ body {
   .go { flex: 0 1 auto; height: 64px; min-height: 52px; padding-block: 0; font-size: 16px; }
   .save-notice { flex: 0 0 auto; margin: 0; background: var(--paper); font-size: 10px; line-height: 12px; }
 }
+
+.arena-tip, .precision-mark { position: absolute; z-index: 2; left: 0; right: 0; top: 16px; margin: 0; text-align: center; pointer-events: none; }
+.arena-tip { padding: 4px 12px; font-size: clamp(15px, 2.4vw, 22px); line-height: 1.25; font-weight: 600; color: var(--ink); text-wrap: balance; }
+.precision-mark { left: 50%; right: auto; top: calc(50% + 52px); translate: -50% -50%; width: var(--cue-gap); opacity: 0; color: var(--win); font-size: clamp(18px, 4vw, 30px); line-height: 1.1; font-weight: 700; }
+.app.is-perfect .precision-mark { opacity: 1; animation: precise-pop .65s ease-out both; }
+.app.is-perfect #bull-bull { animation: bull-slip .55s ease-out; }
+.app.is-perfect .gauge__mark { box-shadow: 0 0 0 3px var(--ink), 0 0 0 7px #dfad4580; }
+.fighter__body { position: relative; }
+.fighter--bull .fighter__body::before { content: ''; pointer-events: none; position: absolute; z-index: -1; left: 4%; right: 4%; bottom: -2%; height: 12%; opacity: 0; background: radial-gradient(ellipse at 20% 60%, #87672c90 0 14%, transparent 16%), radial-gradient(ellipse at 60% 65%, #87672c70 0 23%, transparent 25%), radial-gradient(ellipse at 85% 55%, #87672c60 0 10%, transparent 12%); }
+.fighter--bull.is-braced .fighter__body::before, .app.is-perfect .fighter--bull .fighter__body::before { opacity: 1; animation: hoof-dust .45s ease-out infinite; }
+.fighter--bull.is-braced .fighter__body { animation: hoof-dig .4s ease-in-out infinite; }
+.app[data-phase='done']:not(.is-ko) .fighter--bull.is-lose .bull { animation: reluctant-bow 1s ease-out both; }
+@keyframes precise-pop { 0% { opacity: 0; scale: .85; } 20%, 75% { opacity: 1; scale: 1; } 100% { opacity: 0; scale: 1.05; } }
+@keyframes bull-slip { 0%, 100% { translate: 0 0; rotate: 0deg; } 35% { translate: 7% 2%; rotate: 6deg; } 65% { translate: -2% 0; rotate: -2deg; } }
+@keyframes hoof-dust { from { scale: .7; opacity: .8; } to { scale: 1.15; opacity: .2; } }
+@keyframes hoof-dig { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(2px) rotate(-2deg); } }
+@keyframes reluctant-bow { 0%, 35% { rotate: 0deg; } 18% { rotate: -3deg; } 65%, 100% { rotate: 6deg; } }
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .arena-tip { top: 0; padding: 0 4px; font-size: 14px; line-height: 18px; }
+  .precision-mark { top: calc(50% + 18px); font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app.is-perfect #bull-bull { outline: 2px dashed var(--win); outline-offset: 2px; }
+}

@@ -8,6 +8,7 @@ import { playCountdown } from './audio/count'
 import { openMic, type Mic } from './audio/mic'
 import { createPlayback } from './audio/output'
 import { playBull } from './audio/voice'
+import { playPrecision } from './audio/feedback'
 import './style.css'
 
 function required<T extends Element>(selector: string): T {
@@ -52,12 +53,15 @@ const playerWindow = required<HTMLElement>('#player-window')
 const playerMeter = required<HTMLElement>('#player-meter')
 const playerFill = required<HTMLElement>('#player-fill')
 const playerTime = required<HTMLElement>('#player-time')
+const arenaTip = required<HTMLElement>('#arena-tip')
 
 let audio: AudioContext | null = null
 let mic: Mic | null = null
 let stopVoice: (() => void) | null = null
 let stopCount: (() => void) | null = null
 let stopOutput: (() => void) | null = null
+let stopBell: (() => void) | null = null
+let feedbackDestination: AudioNode | null = null
 let cancelToss: (() => void) | null = null
 let starter: Starter = 'bull'
 let frame = 0
@@ -94,13 +98,16 @@ function resetArena(): void {
   delete app.dataset.starter
   delete app.dataset.finish
   delete app.dataset.echoCancellation
+  delete app.dataset.move
+  app.classList.remove('is-perfect')
+  arenaTip.hidden = true
   app.dataset.mode = mode
   app.classList.remove('is-yours', 'is-his', 'is-ko', 'is-champion', 'is-exhausted')
   app.style.setProperty('--tug', '0')
   app.style.setProperty('--inhale', '0')
   advantage.textContent = 'Равные силы'
   for (const fighter of [youFighter, bullFighter]) {
-    fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling', 'is-scared')
+    fighter.classList.remove('is-hot', 'is-lose', 'is-inhaling', 'is-scared', 'is-braced')
     fighter.style.setProperty('--power', '0')
     fighter.style.setProperty('--fear', '0')
   }
@@ -223,6 +230,8 @@ async function start(): Promise<void> {
   holding = false
   const today = new Date()
   const stage = mode === 'championship' ? championshipStage(stageIndex) : null
+  arenaTip.textContent = stage?.intro ?? 'Начни по сигналу и замолчи на «ПАУЗА» — получишь рывок.'
+  arenaTip.hidden = false
   starter = tossStarter(Math.random())
   const selected = stage ? pickChampionshipBull(stageIndex, Math.random(), previousRhythms.get(stageIndex)) : null
   if (selected) previousRhythms.set(stageIndex, selected.rhythm)
@@ -247,6 +256,7 @@ async function start(): Promise<void> {
   const playback = mic ? await createPlayback(ctx) : null
   if (id !== bout) { playback?.stop(); return }
   stopOutput = playback?.stop ?? null
+  feedbackDestination = playback?.destination ?? ctx.destination
   const echoProtected = Boolean(mic?.echoCancellation && playback?.echoReference)
   app.dataset.echoCancellation = mic ? String(echoProtected) : 'unavailable'
   if (ctx.state !== 'running') await ctx.resume().catch(() => undefined)
@@ -310,11 +320,14 @@ function loop(): void {
     db = heard.db
     moo = heard.moo
   }
+  const previousPerfects = current.perfects
   const view = push(current, { t, db, moo, hold: holding && !mic })
+  const perfect = view.perfects > previousPerfects
   render(view)
   if (view.phase === 'done') {
     const id = bout
     release()
+    if (perfect) stopBell = playPrecision(ctx)
     go.hidden = true
     if (mode === 'championship') {
       wonStage = view.pleased
@@ -341,6 +354,10 @@ function loop(): void {
     }, 900)
     return
   }
+  if (perfect) {
+    stopBell?.()
+    stopBell = playPrecision(ctx, feedbackDestination ?? ctx.destination)
+  }
   frame = requestAnimationFrame(loop)
 }
 
@@ -357,6 +374,11 @@ function render(view: View): void {
   app.classList.toggle('is-his', his)
   app.classList.toggle('is-ko', view.finish === 'knockout')
   app.classList.toggle('is-exhausted', view.exhausted)
+  app.classList.toggle('is-perfect', view.perfect)
+  arenaTip.hidden = view.phase === 'listen' || view.phase === 'done'
+  const baseForce = mode === 'championship' ? championshipStage(stageIndex).rules.bullForce : 1
+  app.dataset.move = view.bullHot ? view.bullPower > baseForce * 1.15 ? 'surge' : view.bullPower < baseForce * .8 ? 'fading' : 'voice' : view.inhale !== null ? 'opening' : 'rest'
+  bullFighter.classList.toggle('is-braced', view.phase === 'listen' && view.tug > .65)
   bullFighter.classList.toggle('is-inhaling', view.inhale !== null)
   app.style.setProperty('--inhale', String(view.inhale === null ? 0 : Math.sin(view.inhale * Math.PI / 2)))
   advantage.textContent = view.phase === 'done'
@@ -365,7 +387,7 @@ function render(view: View): void {
     : yours ? 'Ты ведёшь' : his ? 'Бынич ведёт' : 'Равные силы'
   youFighter.style.setProperty('--power', String(view.youPower / 1.5))
   bullFighter.style.setProperty('--power', String(view.bullPower / 1.5))
-  const yourFear = view.phase === 'listen' ? view.bullPower / 1.5 : 0
+  const yourFear = view.phase === 'listen' ? Math.min(1, view.bullPower / 1.5) : 0
   const bullFear = view.phase === 'listen' ? view.youPower / 1.5 : 0
   youFighter.style.setProperty('--fear', String(yourFear))
   bullFighter.style.setProperty('--fear', String(bullFear))
@@ -391,7 +413,7 @@ function render(view: View): void {
     }
   }
   hint.textContent = view.phase === 'hush' || view.phase === 'invite'
-    ? `${starter === 'you' ? 'Первым мычишь ты' : 'Первым мычит Бынич'}. Жди сигнала.` : view.hint
+    ? `${starter === 'you' ? 'Первым мычишь ты' : 'Первым мычит Бынич'}. ${arenaTip.textContent} Жди сигнала.` : view.perfect ? 'Метко! Точная фраза даёт дополнительный рывок.' : view.hint
   const cue = view.cue
   if (cue) app.dataset.cue = cue.kind
   else delete app.dataset.cue
@@ -408,6 +430,7 @@ function render(view: View): void {
   if (enemy) app.dataset.bullCue = enemy.kind === 'inhale' && enemy.remaining <= 500 ? 'warning' : enemy.kind
   else delete app.dataset.bullCue
   bullAction.textContent = enemy?.kind === 'inhale' ? 'Бынич замычит' : enemy?.kind === 'voice' ? 'Бынич мычит' : 'Бынич выдохся'
+  bullName.textContent = view.phase === 'listen' ? view.perfect ? 'Ой!' : app.dataset.move === 'surge' ? 'Упёрся!' : app.dataset.move === 'fading' ? 'Слабеет' : 'Бынич' : 'Бынич'
   bullTime.textContent = enemy?.kind === 'inhale' ? `${(Math.ceil(enemy.remaining / 100) / 10).toFixed(1).replace('.', ',')} с` : enemy?.kind === 'voice' ? 'МУ-У' : '—'
   bullFill.style.transform = `scaleX(${enemy?.fraction ?? 0})`
   bullMeter.setAttribute('aria-valuenow', String(Math.floor((enemy?.fraction ?? 0) * 100)))
@@ -457,6 +480,9 @@ function release(): void {
   stopVoice = null
   stopCount?.()
   stopCount = null
+  stopBell?.()
+  stopBell = null
+  feedbackDestination = null
   stopOutput?.()
   stopOutput = null
 }

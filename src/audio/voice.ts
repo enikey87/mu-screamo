@@ -115,8 +115,14 @@ export function playBull(ctx: BaseAudioContext, bull: DailyBull, startAt: number
         osc.frequency.exponentialRampToValueAtTime(point.hz, at + point.at)
         sub.frequency.exponentialRampToValueAtTime(point.hz / 2, at + point.at)
       }
-      amp.gain.exponentialRampToValueAtTime(PHRASE_PEAK * profile.power, at + 0.085)
-      amp.gain.exponentialRampToValueAtTime(PHRASE_PEAK * profile.power * 0.62, end - 0.14)
+      const first = PHRASE_PEAK * profile.power * (seg.pressure?.[0] ?? 1)
+      const last = PHRASE_PEAK * profile.power * (seg.pressure?.[1] ?? 1)
+      amp.gain.exponentialRampToValueAtTime(first, at + 0.085)
+      if (seg.pressure) {
+        amp.gain.exponentialRampToValueAtTime(first * .8, at + dur / 2 - .015)
+        amp.gain.setValueAtTime(last * .8, at + dur / 2)
+      }
+      amp.gain.exponentialRampToValueAtTime(last * 0.62, end - 0.14)
       amp.gain.exponentialRampToValueAtTime(0.0001, end - 0.015)
       amp.gain.setValueAtTime(0, end)
       noiseEnv.gain.exponentialRampToValueAtTime(NOISE_ONSET, at + 0.028)
