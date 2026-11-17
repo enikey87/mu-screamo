@@ -392,3 +392,80 @@ describe('remaining bull inhale time', () => {
     expect(push(createRound([]), { ...room, t: start + 600 }).inhaleRemaining).toBeNull()
   })
 })
+
+describe('precise phrases', () => {
+  const pattern: Segment[] = [{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 1000 }, { kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 5000 }]
+  function play(input: (offset: number) => Partial<Sample>, until = 2200, airMs?: number) {
+    const round = createRound(pattern, airMs === undefined ? undefined : { airMs, recoveryRate: 1.5, recoverAt: .4, bullForce: 1 })
+    let view = push(round, room)
+    for (let t = 10; t <= start + until && view.phase !== 'done'; t += 10) view = push(round, { ...room, t, ...(t >= start ? input(t - start) : {}) })
+    return { round, view }
+  }
+  const timed = (offset: number) => ({ hold: offset >= 1100 && offset < 2000 })
+
+  it('rewards a fresh, sustained phrase once after a confirmed stop, then clears the reaction', () => {
+    const { round, view } = play(timed, 2000)
+    expect(view.perfects).toBe(0)
+    expect(view.perfect).toBe(false)
+    const before = round.pull
+    const earned = push(round, { ...room, t: start + 2080 })
+    expect(earned.perfects).toBe(1)
+    expect(earned.perfect).toBe(true)
+    expect(round.pull - before).toBeCloseTo(280)
+    expect(push(round, { ...room, t: start + 2080 }).perfects).toBe(1)
+    walk(round, start + 2100, start + 2800, {})
+    expect(push(round, { ...room, t: start + 2800 }).perfect).toBe(false)
+    expect(push(createRound(pattern), room).perfects).toBe(0)
+  })
+
+  it.each([
+    ['late start', (t: number) => ({ hold: t >= 1300 && t < 2000 })],
+    ['early release', (t: number) => ({ hold: t >= 1100 && t < 1700 })],
+    ['holding across windows', (t: number) => ({ hold: t >= 500 && t < 2000 })],
+    ['late release', (t: number) => ({ hold: t >= 1100 && t < 2300 })],
+    ['non-moo', (t: number) => ({ db: t >= 1100 && t < 2000 ? -8 : -60, moo: false })],
+    ['repeated gaps', (t: number) => ({ hold: t >= 1100 && t < 2000 && t % 200 < 100 })],
+  ])('does not reward %s', (_label, input) => {
+    expect(play(input, 2500).view.perfects).toBe(0)
+  })
+
+  it('accepts a brief recognition dropout and gives soft, normal and held phrases the same bonus', () => {
+    for (const db of [-35, -20]) {
+      const { view } = play(t => ({ db: t >= 1100 && t < 2000 ? db : -60, moo: t >= 1100 && t < 2000 && !(t >= 1500 && t < 1560) }))
+      expect(view.perfects).toBe(1)
+    }
+    expect(play(timed).view.perfects).toBe(1)
+  })
+
+  it('rejects an exhausted phrase and invalidates a candidate after a suspended frame', () => {
+    expect(play(timed, 2200, 500).view.perfects).toBe(0)
+    const { round } = play(timed, 1700)
+    push(round, { ...room, t: start + 2000 })
+    expect(push(round, { ...room, t: start + 2100 }).perfects).toBe(0)
+  })
+
+  it.each([[1260, 3000, 1], [1270, 3000, 0], [1100, 2830, 1], [1100, 2820, 0], [1100, 3180, 1], [1100, 3190, 0]])('handles start %i and release %i at the tolerance boundaries', (onset, release, expected) => {
+    const round = createRound([{ kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 2000 }, { kind: 'voice', ms: 5000 }])
+    let view = push(round, room)
+    for (let t = 10; t <= start + 3300; t += 10) view = push(round, { ...room, t, hold: t >= start + onset && t < start + release })
+    expect(view.perfects).toBe(expected)
+  })
+
+  it('does not invent an opponent response after the final inhale', () => {
+    const round = createRound([{ kind: 'inhale', ms: 8000 }])
+    walk(round, 0, start, {})
+    walk(round, start + 100, start + 600, { hold: true })
+    walk(round, start + 700, ROUND_MS, {})
+    expect(push(round, { ...room, t: ROUND_MS }).perfects).toBe(0)
+  })
+
+  it('can finish by the bonus and freezes the result without awarding again', () => {
+    const { round } = play(timed, 2000)
+    round.pull = KO_PULL_MS - 100
+    const result = push(round, { ...room, t: start + 2080 })
+    expect(result.perfects).toBe(1)
+    expect(result.finish).toBe('knockout')
+    expect(result.tug).toBe(1)
+    expect(push(round, { ...room, t: ROUND_MS })).toEqual(result)
+  })
+})

@@ -3,6 +3,8 @@ import { LISTEN_MS, TARGET_INHALE_MS } from './timing'
 export interface Segment {
   kind: 'voice' | 'inhale'
   ms: number
+  pressure?: readonly [number, number]
+  opening?: number
 }
 
 export interface DailyBull {

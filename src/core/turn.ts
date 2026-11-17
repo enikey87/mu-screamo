@@ -1,4 +1,5 @@
 import type { DailyBull } from './daily'
+import { applyTactic } from './tactics'
 
 export type Starter = 'you' | 'bull'
 
@@ -11,5 +12,5 @@ export function startWith(bull: DailyBull, first: Starter): DailyBull {
   const kind = first === 'you' ? 'inhale' : 'voice'
   const index = bull.segments.findIndex(segment => segment.kind === kind)
   if (index < 0) throw new RangeError('missing first breath')
-  return { ...bull, segments: [...bull.segments.slice(index), ...bull.segments.slice(0, index)] }
+  return { ...bull, segments: applyTactic([...bull.segments.slice(index), ...bull.segments.slice(0, index)], bull.fury) }
 }

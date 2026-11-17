@@ -26,20 +26,23 @@ describe('first moo', () => {
     Object.freeze(bull.segments)
     const scheduled = startWith(bull, 'you')
     expect(scheduled).toEqual({ ...original, segments: [
-      { kind: 'inhale', ms: 1000 }, { kind: 'voice', ms: 1000 },
-      { kind: 'inhale', ms: 4000 }, { kind: 'voice', ms: 2000 },
+      { kind: 'inhale', ms: 1000, opening: 1 }, { kind: 'voice', ms: 1000, pressure: [.7, .7] },
+      { kind: 'inhale', ms: 4000, opening: 1 }, { kind: 'voice', ms: 2000, pressure: [1.3, 1.3] },
     ] })
     expect(bull).toEqual(original)
     expect(scheduled).not.toBe(bull)
     expect(scheduled.segments).not.toBe(bull.segments)
     expect(startWith(scheduled, 'bull')).toEqual({ ...original, segments: [
-      { kind: 'voice', ms: 1000 }, { kind: 'inhale', ms: 4000 },
-      { kind: 'voice', ms: 2000 }, { kind: 'inhale', ms: 1000 },
+      { kind: 'voice', ms: 1000, pressure: [.7, .7] }, { kind: 'inhale', ms: 4000, opening: 1 },
+      { kind: 'voice', ms: 2000, pressure: [1.3, 1.3] }, { kind: 'inhale', ms: 1000, opening: 1.25 },
     ] })
   })
 
   it('keeps a matching opening and rejects an impossible opening', () => {
-    expect(startWith(fixture(), 'bull')).toEqual(fixture())
+    expect(startWith(fixture(), 'bull')).toEqual({ ...fixture(), segments: [
+      { kind: 'voice', ms: 2000, pressure: [.7, .7] }, { kind: 'inhale', ms: 1000, opening: 1 },
+      { kind: 'voice', ms: 1000, pressure: [1.3, 1.3] }, { kind: 'inhale', ms: 4000, opening: 1.25 },
+    ] })
     for (const first of ['you', 'bull'] as const) {
       expect(() => startWith({ ...fixture(), segments: [] }, first)).toThrow(RangeError)
       const kind = first === 'you' ? 'voice' : 'inhale'

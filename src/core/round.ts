@@ -34,6 +34,8 @@ export interface RoundRules {
 }
 
 export interface View {
+  perfects: number
+  perfect: boolean
   phase: 'hush' | 'invite' | 'listen' | 'done'
   finish: 'knockout' | 'time' | null
   breath: 'hush' | 'bait' | 'voice' | 'inhale'
@@ -59,6 +61,10 @@ export interface View {
 }
 
 export interface Round {
+  perfects: number
+  perfectAt: number
+  wasSpeaking: boolean
+  phrase: { start: number; end: number; first: number; last: number; active: number; quiet: number; valid: boolean } | null
   segments: Segment[]
   ambient: number[]
   threshold: number
@@ -79,6 +85,10 @@ export interface Round {
 
 export function createRound(segments: Segment[], rules?: RoundRules): Round {
   return {
+    perfects: 0,
+    perfectAt: -Infinity,
+    wasSpeaking: false,
+    phrase: null,
     segments,
     ambient: [],
     threshold: -36,
@@ -103,6 +113,8 @@ export function push(round: Round, sample: Sample): View {
   const from = round.lastT
   const to = Math.max(from, sample.t)
   if (to - from > MAX_STEP_MS) {
+    round.phrase = null
+    round.wasSpeaking = sample.hold || sample.db >= round.threshold
     round.lastT = Math.min(to, ROUND_MS)
     if (to >= ROUND_MS) { round.finished = true; round.finish = 'time' }
     touchFaces(round, sample)
@@ -131,8 +143,10 @@ export function push(round: Round, sample: Sample): View {
   while (cursor < end) {
     const offset = cursor - LISTEN_START
     const kind = breathAt(round.segments, offset)
+    const window = windowAt(round.segments, offset)
     const segEnd = LISTEN_START + segmentEndOffset(round.segments, offset)
-    const sliceEnd = Math.min(end, segEnd)
+    const middle = window ? LISTEN_START + window.start + window.duration / 2 : segEnd
+    const sliceEnd = Math.min(end, segEnd, window?.segment.pressure && cursor < middle ? middle : Infinity)
     let slice = sliceEnd - cursor
     if (slice <= 0) break
     const loud = sample.db >= round.threshold
@@ -141,8 +155,9 @@ export function push(round: Round, sample: Sample): View {
     const speaking = sample.hold || loud
     if (round.rules && speaking && !round.exhausted) slice = Math.min(slice, round.airMs)
     const power = sample.hold ? 1 : playerPower(sample.db, round.threshold)
-    const player = counts && !round.exhausted ? power * (kind === 'inhale' ? INHALE_PLAYER : VOICE_PLAYER) : 0
-    const bull = (kind === 'inhale' ? INHALE_BULL : VOICE_BULL) * (round.rules?.bullForce ?? 1)
+    const player = counts && !round.exhausted ? power * (kind === 'inhale' ? INHALE_PLAYER * (window?.segment.opening ?? 1) : VOICE_PLAYER) : 0
+    const pressure = window?.segment.pressure?.[cursor < middle ? 0 : 1] ?? 1
+    const bull = (kind === 'inhale' ? INHALE_BULL : VOICE_BULL * pressure) * (round.rules?.bullForce ?? 1)
     const velocity = player - bull
     const crossingMs = velocity > 0 ? (KO_PULL_MS - round.pull) / velocity
       : velocity < 0 ? (-KO_PULL_MS - round.pull) / velocity : Infinity
@@ -150,9 +165,10 @@ export function push(round: Round, sample: Sample): View {
     if (knockout) slice = crossingMs
     const activeMs = useAir(round, speaking, slice)
     round.pull += player * activeMs - bull * slice
+    if (!knockout) scorePhrase(round, window, cursor, slice, counts && activeMs === slice, speaking)
     cursor += slice
-    if (knockout) {
-      round.pull = velocity > 0 ? KO_PULL_MS : -KO_PULL_MS
+    if (knockout || round.pull >= KO_PULL_MS) {
+      round.pull = round.pull >= KO_PULL_MS || velocity > 0 ? KO_PULL_MS : -KO_PULL_MS
       round.finished = true
       round.finish = 'knockout'
       break
@@ -160,9 +176,36 @@ export function push(round: Round, sample: Sample): View {
   }
 
   round.lastT = round.finished ? cursor : Math.min(to, ROUND_MS)
+  round.wasSpeaking = sample.hold || sample.db >= round.threshold
   if (!round.finished && to >= ROUND_MS) { round.finished = true; round.finish = 'time' }
   touchFaces(round, sample)
   return viewOf(round, round.lastT)
+}
+
+function scorePhrase(round: Round, window: ReturnType<typeof windowAt>, cursor: number, ms: number, active: boolean, speaking: boolean): void {
+  if (!window) return
+  if (window.kind === 'inhale') {
+    const start = LISTEN_START + window.start
+    if (round.phrase?.start !== start) round.phrase = { start, end: start + window.duration, first: Infinity, last: -Infinity, active: 0, quiet: 0, valid: !round.wasSpeaking && window.next === 'voice' }
+    const phrase = round.phrase
+    if (active) {
+      phrase.first = Math.min(phrase.first, cursor)
+      phrase.last = cursor + ms
+      phrase.active += ms
+    }
+    if (round.exhausted) phrase.valid = false
+  } else if (round.phrase) {
+    const phrase = round.phrase
+    phrase.quiet = speaking ? 0 : phrase.quiet + ms
+    const now = cursor + ms
+    if (now > phrase.end + 250) round.phrase = null
+    else if (phrase.quiet >= 80 && phrase.valid && phrase.first - phrase.start <= 250 && phrase.end - phrase.last <= 180 && phrase.active >= (phrase.end - phrase.start) * .8) {
+      round.pull += 360
+      round.perfects += 1
+      round.perfectAt = now
+      round.phrase = null
+    }
+  }
 }
 
 function useAir(round: Round, speaking: boolean, ms: number): number {
@@ -193,6 +236,8 @@ function viewOf(round: Round, t: number): View {
   const cue = phase === 'listen' ? cueOf(round, window) : null
   const instruction = cue?.kind === 'moo' ? round.youHot ? 'Держи!' : 'МЫЧИ' : cue?.kind === 'ready' ? 'ЖДИ' : 'ПАУЗА'
   return {
+    perfects: round.perfects,
+    perfect: t - round.perfectAt < 650,
     phase,
     finish: round.finish,
     breath,
@@ -225,10 +270,10 @@ function viewOf(round: Round, t: number): View {
   }
 }
 
-function windowAt(segments: Segment[], t: number): { kind: Segment['kind']; progress: number; remaining: number; duration: number; next: Segment['kind'] | null } | null {
+function windowAt(segments: Segment[], t: number): { kind: Segment['kind']; start: number; segment: Segment; progress: number; remaining: number; duration: number; next: Segment['kind'] | null } | null {
   let start = 0
   for (const [index, segment] of segments.entries()) {
-    if (t < start + segment.ms) return { kind: segment.kind, progress: clamp((t - start) / segment.ms, 0, 1), remaining: start + segment.ms - t, duration: segment.ms, next: segments[index + 1]?.kind ?? null }
+    if (t < start + segment.ms) return { kind: segment.kind, start, segment, progress: clamp((t - start) / segment.ms, 0, 1), remaining: start + segment.ms - t, duration: segment.ms, next: segments[index + 1]?.kind ?? null }
     start += segment.ms
   }
   return null
@@ -291,7 +336,8 @@ function touchFaces(round: Round, sample: Sample): void {
   round.youHot = counts && !round.exhausted
   round.bullHot = kind === 'voice'
   round.youPower = round.youHot ? (sample.hold ? 1 : playerPower(sample.db, round.threshold)) : 0
-  round.bullPower = round.bullHot ? round.rules?.bullForce ?? 1 : 0
+  const window = windowAt(round.segments, sample.t - LISTEN_START)
+  round.bullPower = round.bullHot ? (round.rules?.bullForce ?? 1) * (window?.segment.pressure?.[window.progress < .5 ? 0 : 1] ?? 1) : 0
 }
 
 function cheeksOf(phase: View['phase'], breath: View['breath'], proximity: number): number {
